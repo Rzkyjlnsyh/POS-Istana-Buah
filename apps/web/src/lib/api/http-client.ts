@@ -51,7 +51,12 @@ export function createApiClient(deps: ApiClientDependencies): AxiosInstance {
   const rawRefreshClient = axios.create({
     baseURL: deps.baseURL,
     timeout: deps.timeoutMs,
-    adapter: deps.adapter,
+    adapter: (config) => {
+      const resolved = axios.getAdapter(
+        deps.adapter ?? client.defaults.adapter ?? axios.defaults.adapter,
+      );
+      return resolved(config);
+    },
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
