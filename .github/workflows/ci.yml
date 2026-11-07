@@ -96,3 +96,8 @@ jobs:
 
       - name: Build production bundles
         run: pnpm build
+
+      - name: Validate Docker Compose & server scripts
+        run: |
+          docker compose -f docker/docker-compose.yml --env-file docker/.env.example config -q
+          bash -n scripts/backup.sh scripts/deploy.sh scripts/setup-vps.sh
