@@ -4,10 +4,14 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import type { AppConfig } from './config/app.config';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
-import { createHealthRouter } from './utils/health.routes';
+import { createHealthRouter, type HealthCheckDependencies } from './utils/health.routes';
+
+export interface AppDependencies {
+  health?: HealthCheckDependencies;
+}
 
 /** Membangun Express app (tanpa listen) agar mudah diuji dengan Supertest. */
-export function createApp(config: AppConfig): Express {
+export function createApp(config: AppConfig, deps: AppDependencies = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
@@ -16,7 +20,7 @@ export function createApp(config: AppConfig): Express {
   app.use(compression());
   app.use(express.json({ limit: config.jsonBodyLimit }));
 
-  app.use(createHealthRouter(config));
+  app.use(createHealthRouter(config, deps.health));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

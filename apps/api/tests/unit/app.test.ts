@@ -2,18 +2,74 @@ import request from 'supertest';
 import express from 'express';
 import { createApp } from '../../src/app';
 import { appConfig, buildConfig } from '../../src/config/app.config';
+import { disconnectDatabase } from '../../src/lib/prisma';
+import { redis } from '../../src/lib/redis';
 import { errorHandler } from '../../src/middleware/errorHandler';
 import { AppError } from '../../src/utils/app-error';
 
-describe('API scaffold', () => {
-  const app = createApp(appConfig);
+afterAll(async () => {
+  redis.disconnect();
+  await disconnectDatabase();
+});
 
-  it('GET /health -> 200 dengan payload sesuai spesifikasi 13.5', async () => {
+describe('API scaffold & health check', () => {
+  const healthyDeps = {
+    checkDatabase: async () => 'ok' as const,
+    checkRedis: async () => 'ok' as const,
+  };
+
+  const app = createApp(appConfig, { health: healthyDeps });
+
+  it('GET /health -> 200 dengan status database & redis ok (spesifikasi 13.5)', async () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: 'ok', version: '0.0.0-test', services: {} });
+    expect(res.body).toMatchObject({
+      status: 'ok',
+      version: '0.0.0-test',
+      services: { database: 'ok', redis: 'ok' },
+    });
     expect(typeof res.body.uptime).toBe('number');
     expect(new Date(res.body.timestamp).toString()).not.toBe('Invalid Date');
+  });
+
+  it('GET /health -> 503 degraded bila database down', async () => {
+    const degradedApp = createApp(appConfig, {
+      health: {
+        checkDatabase: async () => 'down',
+        checkRedis: async () => 'ok',
+      },
+    });
+    const res = await request(degradedApp).get('/health');
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      status: 'degraded',
+      services: { database: 'down', redis: 'ok' },
+    });
+  });
+
+  it('GET /health -> 503 degraded bila redis down', async () => {
+    const degradedApp = createApp(appConfig, {
+      health: {
+        checkDatabase: async () => 'ok',
+        checkRedis: async () => 'down',
+      },
+    });
+    const res = await request(degradedApp).get('/health');
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      status: 'degraded',
+      services: { database: 'ok', redis: 'down' },
+    });
+  });
+
+  it('GET /health dengan default dependencies mengembalikan 503 bila endpoint DB/Redis tidak aktif', async () => {
+    const defaultApp = createApp(appConfig);
+    const res = await request(defaultApp).get('/health');
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      status: 'degraded',
+      services: { database: 'down', redis: 'down' },
+    });
   });
 
   it('mengirim security header (helmet) dan menyembunyikan x-powered-by', async () => {
