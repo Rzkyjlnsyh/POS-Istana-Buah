@@ -1,0 +1,141 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Environment tujuan deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-package:
+    name: Verify & Build Release Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: istanabuah_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: CiPostgresPassword123
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d istanabuah_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:CiPostgresPassword123@127.0.0.1:5432/istanabuah_ci?schema=public
+      TEST_REDIS_URL: redis://127.0.0.1:6379
+      VITE_API_BASE_URL: https://api.istanabuah.com/v1
+      VITE_APP_NAME: Istana Buah Semarang
+      VITE_OFFLINE_SYNC_INTERVAL: '30000'
+      VITE_PRODUCT_CACHE_TTL: '300000'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm rebuild bcrypt esbuild @prisma/engines prisma @prisma/client
+
+      - name: Lint, test & build
+        run: |
+          pnpm lint
+          pnpm test
+          pnpm build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+          retention-days: 7
+          path: |
+            apps/api/dist
+            apps/api/prisma
+            apps/web/dist
+            packages/shared/dist
+
+  deploy:
+    name: Deploy to Target Environment
+    needs: verify-and-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && inputs.target_env || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_HEALTHCHECK_URL: ${{ secrets.DEPLOY_HEALTHCHECK_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Execute remote deployment via SSH
+        run: |
+          TARGET_ENV="${{ github.event_name == 'workflow_dispatch' && inputs.target_env || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}"
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+            {
+              echo "### CD Pipeline Ready ($TARGET_ENV)"
+              echo "Artifact commit \`${GITHUB_SHA}\` tervalidasi dan siap deploy."
+              echo "Tambahkan GitHub Environment Secrets (\`SSH_HOST\`, \`SSH_USER\`, \`SSH_PRIVATE_KEY\`, \`DEPLOY_PATH\`, \`DEPLOY_HEALTHCHECK_URL\`) untuk mengaktifkan eksekusi SSH otomatis ke VPS."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          PORT_ARG="${SSH_PORT:-22}"
+          REMOTE_DIR="${DEPLOY_PATH:-/opt/istana-buah}"
+          BRANCH_NAME="${GITHUB_REF_NAME}"
+
+          ssh -i ~/.ssh/deploy_key -p "$PORT_ARG" -o StrictHostKeyChecking=accept-new \
+            "${SSH_USER}@${SSH_HOST}" \
+            "cd '${REMOTE_DIR}' && DEPLOY_BRANCH='${BRANCH_NAME}' HEALTHCHECK_URL='${DEPLOY_HEALTHCHECK_URL}' bash scripts/deploy.sh"

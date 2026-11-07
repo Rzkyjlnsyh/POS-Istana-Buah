@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'bugfix/**'
+      - 'hotfix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-test:
+    name: Lint, Typecheck, Test & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: istanabuah_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: CiPostgresPassword123
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d istanabuah_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:CiPostgresPassword123@127.0.0.1:5432/istanabuah_ci?schema=public
+      TEST_REDIS_URL: redis://127.0.0.1:6379
+      VITE_API_BASE_URL: https://api.staging.istanabuah.com/v1
+      VITE_APP_NAME: Istana Buah Semarang
+      VITE_OFFLINE_SYNC_INTERVAL: '30000'
+      VITE_PRODUCT_CACHE_TTL: '300000'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm rebuild bcrypt esbuild @prisma/engines prisma @prisma/client
+
+      - name: Verify Node.js version
+        run: pnpm check:node
+
+      - name: Security audit production dependencies (OWASP A06)
+        run: pnpm audit --prod --audit-level=critical
+
+      - name: Check formatting (Prettier)
+        run: pnpm format:check
+
+      - name: Lint workspace (ESLint)
+        run: pnpm lint
+
+      - name: Typecheck workspace (TypeScript strict)
+        run: pnpm typecheck
+
+      - name: Run unit & integration tests with coverage
+        run: pnpm test
+
+      - name: Build production bundles
+        run: pnpm build

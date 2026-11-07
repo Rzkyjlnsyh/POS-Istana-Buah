@@ -1937,7 +1937,7 @@ Proyek Istana Buah
 | ENV-001 | ✅ DONE | `pnpm check:node` OK (Node 24.18 ≥ 20); `pnpm lint` & `pnpm format:check` exit 0; pre-commit (eslint) menolak file buruk (exit 1); commit-msg (commitlint) menolak pesan non-conventional (exit 1) |
 | ENV-002 | ✅ DONE | pnpm workspace (apps/web, apps/api, packages/shared); `pnpm test`: shared 6, api 12, web 3 passed (coverage 100%); `pnpm build` exit 0; API `GET /health` → 200 `{"status":"ok",...}`; web dev (Vite) → 200; web & api mengimpor `@istana-buah/shared` |
 | ENV-003 | ✅ DONE | PostgreSQL 16.15 + ekstensi `pg_trgm` aktif; Prisma schema 18 tabel + migrasi `20261107000000_init` (`pnpm db:migrate` exit 0) + indeks GIN/covering + trigger immutable `audit_logs`; Redis (`ioredis`) terhubung; `pnpm db:seed` exit 0 (5 kategori, 3 user bcrypt, 5 app_configs); Jest 32 passed (4 suites, 100% stmt/lines/funcs, 94.11% branches) |
-| ENV-004 | ⏳ TODO | - |
+| ENV-004 | ✅ DONE | `.github/workflows/ci.yml` (Node 20 LTS, PostgreSQL 16 + Redis 7 service containers, `pnpm audit --prod --audit-level=critical`, format, lint, typecheck, test, build), `.github/workflows/deploy.yml` (artifact packaging + SSH deploy ke `staging`/`production`), `.github/dependabot.yml` (OWASP A06); `pnpm audit --prod --audit-level=critical` exit 0 (0 critical), `pnpm lint` exit 0, `pnpm test` exit 0 (shared 6, api 32, web 3 passed), `pnpm build` exit 0 |
 | ENV-005 | ⏳ TODO | - |
 
 ---
