@@ -1,0 +1,28 @@
+# Dependencies & build outputs
+**/node_modules
+**/dist
+**/coverage
+**/.turbo
+
+# Local environment & secrets (never bake secrets into Docker images)
+.env
+.env.*
+!.env.example
+apps/**/.env
+apps/**/.env.*
+!apps/**/.env.example
+docker/.env
+
+# Git, IDE, logs & local agent data
+.git
+.gitignore
+.github
+.husky
+.vscode
+.agent
+AGENTS.md
+ISTANA_BUAH_PROJECT_DOCUMENTATION.md
+logs
+uploads
+*.log
+
