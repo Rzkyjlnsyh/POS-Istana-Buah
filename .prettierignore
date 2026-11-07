@@ -6,4 +6,5 @@ pnpm-lock.yaml
 docs/PROJECT_DOCUMENTATION.md
 apps/api/prisma/migrations
 .agent
+.vscode
 
