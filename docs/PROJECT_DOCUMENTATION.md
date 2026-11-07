@@ -1930,6 +1930,16 @@ Proyek Istana Buah
 | | | - Setup Nginx + SSL (Let's Encrypt) | P0 | 1 hari | - | HTTPS berfungsi |
 | | | - Setup backup otomatis PostgreSQL | P1 | 0.5 hari | - | Backup terjadwal |
 
+**Checklist Progres FASE 0**
+
+| ID | Status | Bukti |
+|----|--------|-------|
+| ENV-001 | ✅ DONE | `pnpm check:node` OK (Node 24.18 ≥ 20); `pnpm lint` & `pnpm format:check` exit 0; pre-commit (eslint) menolak file buruk (exit 1); commit-msg (commitlint) menolak pesan non-conventional (exit 1) |
+| ENV-002 | ⏳ TODO | - |
+| ENV-003 | ⏳ TODO | - |
+| ENV-004 | ⏳ TODO | - |
+| ENV-005 | ⏳ TODO | - |
+
 ---
 
 #### FASE 1: Core MVP
