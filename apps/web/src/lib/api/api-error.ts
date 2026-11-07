@@ -167,3 +167,40 @@ export function resolveAuthErrorCopy(error: unknown): AuthErrorCopy {
       };
   }
 }
+
+export function resolveChangePasswordErrorCopy(error: unknown): AuthErrorCopy {
+  const normalized = normalizeApiError(error);
+
+  switch (normalized.code) {
+    case ERROR_CODES.INVALID_CURRENT_PASSWORD:
+    case ERROR_CODES.INVALID_CREDENTIALS:
+      return {
+        title: 'Password saat ini belum sesuai',
+        description:
+          'Periksa kembali password lama yang sedang Anda gunakan sebelum menyimpan password baru.',
+      };
+
+    case ERROR_CODES.RATE_LIMITED: {
+      const waitSec = normalized.retryAfterSeconds ?? 60;
+      return {
+        title: 'Terlalu banyak percobaan ubah password',
+        description: `Silakan tunggu ${String(waitSec)} detik sebelum mencoba menyimpan kembali.`,
+      };
+    }
+
+    case 'NETWORK_TIMEOUT':
+    case 'NETWORK_ERROR':
+      return {
+        title: 'Koneksi ke server terputus',
+        description:
+          'Perubahan password memerlukan koneksi aktif ke server toko. Periksa Wi-Fi/LAN lalu coba lagi.',
+      };
+
+    default:
+      return {
+        title: 'Gagal memperbarui password',
+        description:
+          normalized.message || 'Silakan periksa isian Anda lalu coba beberapa saat lagi.',
+      };
+  }
+}

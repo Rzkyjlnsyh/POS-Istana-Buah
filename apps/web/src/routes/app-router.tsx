@@ -4,6 +4,7 @@ import { AdminLayout } from '../components/layout/admin-layout';
 import { PosShellLayout } from '../components/layout/pos-shell-layout';
 import { webConfig } from '../config/app.config';
 import { bootstrapAuthSession } from '../features/auth/api/auth-api';
+import { ChangePasswordPage } from '../features/auth/pages/change-password-page';
 import { LoginPage } from '../features/auth/pages/login-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
 import { ROLE_LABELS_ID } from './navigation-config';
@@ -199,10 +200,7 @@ export function AppRoutes() {
             path="/account/password"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER', 'CASHIER']}>
-                <ModuleWorkspaceSection
-                  title="Ubah Password Akun"
-                  description="Perbarui password akun Anda secara berkala untuk menjaga keamanan akses toko."
-                />
+                <ChangePasswordPage />
               </RequireRole>
             }
           />

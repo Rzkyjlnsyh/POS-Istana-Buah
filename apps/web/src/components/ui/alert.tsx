@@ -1,5 +1,5 @@
 import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
-import type { HTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
 export type AlertVariant = 'danger' | 'warning' | 'success' | 'info';
@@ -29,33 +29,32 @@ const VARIANT_STYLES: Record<AlertVariant, { container: string; icon: typeof Ale
   },
 };
 
-export function Alert({
-  variant = 'info',
-  title,
-  children,
-  className,
-  role,
-  ...props
-}: AlertProps) {
-  const style = VARIANT_STYLES[variant];
-  const IconComponent = style.icon;
-  const computedRole = role ?? (variant === 'danger' || variant === 'warning' ? 'alert' : 'status');
+export const Alert = forwardRef<HTMLDivElement, AlertProps>(
+  ({ variant = 'info', title, children, className, role, ...props }, ref) => {
+    const style = VARIANT_STYLES[variant];
+    const IconComponent = style.icon;
+    const computedRole =
+      role ?? (variant === 'danger' || variant === 'warning' ? 'alert' : 'status');
 
-  return (
-    <div
-      role={computedRole}
-      className={cn(
-        'flex items-start gap-3 rounded-xl border px-3.5 py-3 text-sm leading-relaxed',
-        style.container,
-        className,
-      )}
-      {...props}
-    >
-      <IconComponent className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        {title ? <p className="font-semibold">{title}</p> : null}
-        <div className={cn(title ? 'mt-0.5' : undefined)}>{children}</div>
+    return (
+      <div
+        ref={ref}
+        role={computedRole}
+        className={cn(
+          'flex items-start gap-3 rounded-xl border px-3.5 py-3 text-sm leading-relaxed',
+          style.container,
+          className,
+        )}
+        {...props}
+      >
+        <IconComponent className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          {title ? <p className="font-semibold">{title}</p> : null}
+          <div className={cn(title ? 'mt-0.5' : undefined)}>{children}</div>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  },
+);
+
+Alert.displayName = 'Alert';

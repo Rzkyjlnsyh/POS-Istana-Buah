@@ -18,6 +18,7 @@ import { loginRequest } from '../api/auth-api';
 
 interface LocationRedirectState {
   from?: string;
+  passwordChanged?: boolean;
 }
 
 const wibTimeFormatter = new Intl.DateTimeFormat('id-ID', {
@@ -54,12 +55,23 @@ export function LoginPage() {
 
   const user = useAuthStore((state) => state.user);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const sessionNotice = useAuthStore((state) => state.sessionNotice);
+  const clearSessionNotice = useAuthStore((state) => state.clearSessionNotice);
   const setSession = useAuthStore((state) => state.setSession);
 
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
   const [wibClock, setWibClock] = useState<string>(() => formatCurrentWibClock());
   const [serverError, setServerError] = useState<AuthErrorCopy | null>(null);
+  const activeSuccessNotice =
+    sessionNotice ??
+    ((location.state as LocationRedirectState | null)?.passwordChanged
+      ? {
+          title: 'Password berhasil diperbarui',
+          description:
+            'Sesi lama telah diamankan. Silakan masuk kembali menggunakan password baru Anda.',
+        }
+      : null);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -99,6 +111,7 @@ export function LoginPage() {
   const onSubmit = async (values: LoginInput) => {
     setIsPasswordVisible(false);
     setServerError(null);
+    clearSessionNotice();
     try {
       const session = await loginRequest(values);
       setSession(session);
@@ -173,6 +186,12 @@ export function LoginPage() {
           }}
           className="space-y-5 px-6 py-6 sm:px-8 sm:py-7"
         >
+          {activeSuccessNotice && !serverError ? (
+            <Alert variant="success" title={activeSuccessNotice.title}>
+              {activeSuccessNotice.description}
+            </Alert>
+          ) : null}
+
           {serverError ? (
             <Alert variant="danger" title={serverError.title}>
               {serverError.description}
@@ -219,6 +238,9 @@ export function LoginPage() {
                 id="login-password"
                 type={isPasswordVisible ? 'text' : 'password'}
                 autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="Masukkan password akun"
                 className="pr-12"
                 hasError={Boolean(errors.password)}

@@ -245,7 +245,10 @@ export function AdminLayout() {
           {!isOnline ? (
             <div className="flex items-center justify-center gap-2 border-t border-semantic-warning-border bg-semantic-warning-bg px-4 py-2 text-xs font-semibold text-semantic-warning-ink">
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>Mode offline aktif — perubahan akan disinkronkan saat koneksi kembali</span>
+              <span>
+                Mode offline aktif — koneksi server terputus; perubahan akun &amp; master data
+                memerlukan jaringan toko aktif
+              </span>
             </div>
           ) : null}
         </div>
