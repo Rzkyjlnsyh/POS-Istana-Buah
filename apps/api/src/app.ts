@@ -7,12 +7,14 @@ import type { AppConfig } from './config/app.config';
 import { authConfig, type AuthConfig } from './config/auth.config';
 import { prisma } from './lib/prisma';
 import { redis } from './lib/redis';
+import { createAuthenticateMiddleware } from './middleware/authenticate';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import {
   createRateLimiter,
   RedisRateLimitStore,
   type RateLimitStore,
 } from './middleware/rateLimiter';
+import { requestLogger } from './middleware/requestLogger';
 import { createAuthRouter } from './modules/auth/auth.routes';
 import { AuthService } from './modules/auth/auth.service';
 import { createHealthRouter, type HealthCheckDependencies } from './utils/health.routes';
@@ -35,6 +37,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
 
   const jwtService = new JwtTokenService(effectiveAuthCfg.jwt);
   const authService = new AuthService(db, jwtService, effectiveAuthCfg);
+  const authenticate = createAuthenticateMiddleware({ jwtService, prismaClient: db });
 
   const globalRateLimiter = createRateLimiter({
     tier: 'global',
@@ -54,6 +57,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigins, credentials: true }));
   app.use(compression());
+  app.use(requestLogger);
   app.use(express.json({ limit: config.jsonBodyLimit }));
 
   app.use(createHealthRouter(config, deps.health));
@@ -64,8 +68,8 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
     '/auth',
     createAuthRouter({
       authService,
-      jwtService,
       authRateLimiter,
+      authenticate,
     }),
   );
 
