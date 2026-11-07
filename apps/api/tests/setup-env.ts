@@ -58,5 +58,7 @@ Object.assign(process.env, {
   RATE_LIMIT_WINDOW_MS: '60000',
   RATE_LIMIT_MAX_REQUESTS: '100',
   AUTH_RATE_LIMIT_MAX: '20',
+  CACHE_KEY_PREFIX: 'cache-test',
+  CACHE_CATEGORY_TTL_SECONDS: '300',
   LOG_LEVEL: 'error',
 });
