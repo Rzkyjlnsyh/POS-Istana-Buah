@@ -10,6 +10,7 @@ export const loginSchema = z.object({
   username: z
     .string()
     .trim()
+    .min(1, 'Username wajib diisi')
     .min(USERNAME_MIN_LENGTH, `Username minimal ${String(USERNAME_MIN_LENGTH)} karakter`)
     .max(USERNAME_MAX_LENGTH, `Username maksimal ${String(USERNAME_MAX_LENGTH)} karakter`),
   password: z

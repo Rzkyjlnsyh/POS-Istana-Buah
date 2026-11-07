@@ -1,13 +1,23 @@
-import { USER_ROLES } from '@istana-buah/shared';
-import { webConfig } from './config/app.config';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter } from 'react-router';
+import { AppRoutes } from './routes/app-router';
 
-/** Placeholder scaffold ENV-002. UI sesungguhnya dibangun mulai M01-003 (wajib via skill impeccable). */
+const defaultQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 30_000,
+    },
+  },
+});
+
 export default function App() {
   return (
-    <main>
-      <h1>{webConfig.appName}</h1>
-      <p>Sistem Kasir &amp; Manajemen Operasional</p>
-      <p>Role: {USER_ROLES.join(' / ')}</p>
-    </main>
+    <QueryClientProvider client={defaultQueryClient}>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
