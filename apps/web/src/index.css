@@ -1,0 +1,145 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Bagian 8.1.1 — Primary Orchard Green */
+  --color-primary-50: #f0fdf4;
+  --color-primary-100: #dcfce7;
+  --color-primary-500: #22c55e;
+  --color-primary-600: #16a34a;
+  --color-primary-700: #15803d;
+  --color-primary-800: #166534;
+  --color-primary-900: #14532d;
+
+  /* Bagian 8.1.1 — Semantic & Accessible Surface Pairs (WCAG AA >= 4.5:1) */
+  --color-success: #22c55e;
+  --color-success-ink: #14532d;
+  --color-success-bg: #f0fdf4;
+  --color-success-border: #bbf7d0;
+
+  --color-warning: #f59e0b;
+  --color-warning-ink: #78350f;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+
+  --color-danger: #ef4444;
+  --color-danger-ink: #7f1d1d;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
+
+  --color-info: #3b82f6;
+  --color-info-ink: #1e3a8a;
+  --color-info-bg: #eff6ff;
+  --color-info-border: #bfdbfe;
+
+  /* Bagian 8.1.1 — Botanical-Tinted Operational Surfaces & Ink */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-900: #111827;
+
+  --surface-canvas: #f4f8f5;
+  --surface-panel: #ffffff;
+  --surface-subtle: #edf5ef;
+  --border-subtle: #d4e4d9;
+  --border-strong: #688873;
+
+  --ink-primary: #102418;
+  --ink-secondary: #355240;
+  --ink-muted: #4b6755;
+
+  /* Bagian 8.1.2 — Typography Scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+}
+
+@layer base {
+  html {
+    font-family:
+      'Inter',
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
+    background-color: var(--surface-canvas);
+    color: var(--ink-primary);
+    caret-color: var(--color-primary-700);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--surface-canvas);
+    color: var(--ink-primary);
+  }
+
+  ::selection {
+    background-color: var(--color-primary-100);
+    color: var(--color-primary-900);
+  }
+
+  a {
+    text-underline-offset: 0.22em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary-700);
+    outline-offset: 2px;
+  }
+
+  /* Custom Scrollbars — Botanical Operational Palette */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) var(--surface-subtle);
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--surface-subtle);
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border-radius: 9999px;
+    border: 2px solid var(--surface-subtle);
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes panel-settle {
+  from {
+    opacity: 0.92;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.motion-panel {
+  animation: panel-settle 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-panel {
+    animation: none;
+    transition-duration: 120ms;
+  }
+}

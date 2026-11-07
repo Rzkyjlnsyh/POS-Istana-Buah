@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 .pnpm-store/
 
@@ -28,10 +28,14 @@ uploads/
 
 # Agent-local (jangan masuk repo, lihat AGENTS.md Bagian 6)
 .agent/
+.impeccable/
+**/.impeccable/
 AGENTS.md
 ISTANA_BUAH_PROJECT_DOCUMENTATION.md
 PRODUCT.md
+**/PRODUCT.md
 DESIGN.md
+**/DESIGN.md
 
 # OS / editor
 .DS_Store
