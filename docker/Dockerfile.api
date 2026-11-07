@@ -1,0 +1,56 @@
+# ==============================================================================
+# Multi-stage Dockerfile — Backend API (@istana-buah/api)
+# ENV-005 / Bagian 5.4 & Bagian 13.2
+# ==============================================================================
+
+FROM node:20-alpine AS builder
+
+RUN apk add --no-cache openssl python3 make g++ \
+  && corepack enable \
+  && corepack prepare pnpm@10.10.0 --activate
+
+WORKDIR /workspace
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/api/prisma ./apps/api/prisma
+
+RUN pnpm install --frozen-lockfile --filter @istana-buah/api... \
+  && pnpm rebuild bcrypt @prisma/engines prisma @prisma/client
+
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
+COPY scripts/seed.ts ./scripts/seed.ts
+
+RUN pnpm --filter @istana-buah/api build
+
+FROM node:20-alpine AS runner
+
+RUN apk add --no-cache openssl wget \
+  && mkdir -p /var/uploads/istanabuah /var/log/istanabuah \
+  && chown -R node:node /var/uploads/istanabuah /var/log/istanabuah
+
+WORKDIR /workspace
+
+ENV NODE_ENV=production
+
+COPY --from=builder --chown=node:node /workspace/package.json /workspace/pnpm-workspace.yaml ./
+COPY --from=builder --chown=node:node /workspace/node_modules ./node_modules
+COPY --from=builder --chown=node:node /workspace/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder --chown=node:node /workspace/packages/shared/dist ./packages/shared/dist
+COPY --from=builder --chown=node:node /workspace/apps/api/package.json ./apps/api/package.json
+COPY --from=builder --chown=node:node /workspace/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder --chown=node:node /workspace/apps/api/prisma ./apps/api/prisma
+COPY --from=builder --chown=node:node /workspace/apps/api/dist ./apps/api/dist
+COPY --from=builder --chown=node:node /workspace/scripts/seed.ts ./scripts/seed.ts
+
+WORKDIR /workspace/apps/api
+
+USER node
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/health" || exit 1
+
+CMD ["node", "dist/server.js"]
+

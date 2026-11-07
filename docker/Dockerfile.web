@@ -1,0 +1,47 @@
+# ==============================================================================
+# Multi-stage Dockerfile — Frontend PWA (@istana-buah/web + Nginx 1.27)
+# ENV-005 / Bagian 5.4, Bagian 13.2 & Bagian 13.3
+# ==============================================================================
+
+FROM node:20-alpine AS builder
+
+RUN corepack enable \
+  && corepack prepare pnpm@10.10.0 --activate
+
+WORKDIR /workspace
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY apps/web/package.json ./apps/web/package.json
+
+RUN pnpm install --frozen-lockfile --filter @istana-buah/web... \
+  && pnpm rebuild esbuild
+
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
+
+ARG VITE_API_BASE_URL
+ARG VITE_APP_NAME
+ARG VITE_OFFLINE_SYNC_INTERVAL
+ARG VITE_PRODUCT_CACHE_TTL
+
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_APP_NAME=${VITE_APP_NAME}
+ENV VITE_OFFLINE_SYNC_INTERVAL=${VITE_OFFLINE_SYNC_INTERVAL}
+ENV VITE_PRODUCT_CACHE_TTL=${VITE_PRODUCT_CACHE_TTL}
+
+RUN pnpm --filter @istana-buah/web build
+
+FROM nginx:1.27-alpine AS runner
+
+RUN apk add --no-cache certbot certbot-nginx openssl \
+  && mkdir -p /var/www/certbot
+
+COPY --from=builder /workspace/apps/web/dist /usr/share/nginx/html
+COPY docker/nginx.conf /etc/nginx/templates/default.conf.template
+
+ENV NGINX_ENVSUBST_FILTER="^(APP_DOMAIN|API_DOMAIN|API_UPSTREAM_PORT|CLIENT_MAX_BODY_SIZE)$"
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=5 \
+  CMD wget -q --spider http://127.0.0.1:80/.well-known/healthz || exit 1
+

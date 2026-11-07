@@ -1930,6 +1930,16 @@ Proyek Istana Buah
 | | | - Setup Nginx + SSL (Let's Encrypt) | P0 | 1 hari | - | HTTPS berfungsi |
 | | | - Setup backup otomatis PostgreSQL | P1 | 0.5 hari | - | Backup terjadwal |
 
+**Checklist Progres FASE 0**
+
+| ID | Status | Bukti |
+|----|--------|-------|
+| ENV-001 | ✅ DONE | `pnpm check:node` OK (Node 24.18 ≥ 20); `pnpm lint` & `pnpm format:check` exit 0; pre-commit (eslint) menolak file buruk (exit 1); commit-msg (commitlint) menolak pesan non-conventional (exit 1) |
+| ENV-002 | ✅ DONE | pnpm workspace (apps/web, apps/api, packages/shared); `pnpm test`: shared 6, api 12, web 3 passed (coverage 100%); `pnpm build` exit 0; API `GET /health` → 200 `{"status":"ok",...}`; web dev (Vite) → 200; web & api mengimpor `@istana-buah/shared` |
+| ENV-003 | ✅ DONE | PostgreSQL 16.15 + ekstensi `pg_trgm` aktif; Prisma schema 18 tabel + migrasi `20261107000000_init` (`pnpm db:migrate` exit 0) + indeks GIN/covering + trigger immutable `audit_logs`; Redis (`ioredis`) terhubung; `pnpm db:seed` exit 0 (5 kategori, 3 user bcrypt, 5 app_configs); Jest 32 passed (4 suites, 100% stmt/lines/funcs, 94.11% branches) |
+| ENV-004 | ✅ DONE | `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.github/dependabot.yml`; GitHub Actions live di `develop` lulus (`CI` run `42405102820` `success`, `CD` run `42405102804` `success`); `pnpm audit --prod --audit-level=critical` exit 0 |
+| ENV-005 | ✅ DONE | `docker/Dockerfile.api`, `docker/Dockerfile.web`, `docker/docker-compose.yml`, `docker/nginx.conf` (TLS 1.2/1.3, Let's Encrypt, 6 security headers Bagian 14.6, SPA/SW rules), `docker/.env.example`, `.dockerignore`, `scripts/setup-vps.sh` (Ubuntu 22.04 UFW + Docker + Certbot + cron `0 2 * * *`), `scripts/deploy.sh`, `scripts/backup.sh` (`pg_dump` gzip + retensi 30 hari); `bash -n` exit 0; `pnpm test` exit 0 (shared 6, api 38, web 3 passed = 47 passed, coverage 100%); `pnpm build` exit 0 |
+
 ---
 
 #### FASE 1: Core MVP

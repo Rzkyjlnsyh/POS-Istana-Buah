@@ -1,0 +1,35 @@
+/**
+ * Environment untuk test (dimuat sebelum modul app). Nilai khusus test, bukan secret.
+ * Dev environment memakai apps/api/.env.
+ */
+Object.assign(process.env, {
+  NODE_ENV: 'test',
+  PORT: '3000',
+  CORS_ORIGIN: 'http://localhost:5173',
+  APP_NAME: 'Istana Buah Test',
+  APP_VERSION: '0.0.0-test',
+  DEFAULT_TIMEZONE: 'Asia/Jakarta',
+  JSON_BODY_LIMIT: '1kb',
+  DATABASE_URL: 'postgresql://test:test@127.0.0.1:54339/istanabuah_unit?schema=public',
+  DB_POOL_LIMIT: '10',
+  REDIS_URL: 'redis://127.0.0.1:63809',
+  REDIS_MAX_RETRIES: '1',
+  REDIS_CONNECT_TIMEOUT_MS: '1000',
+  BCRYPT_ROUNDS: '12',
+  TAX_PERCENTAGE: '0',
+  LOW_STOCK_DEFAULT_THRESHOLD: '5',
+  RECEIPT_FOOTER: 'Terima kasih',
+  SEED_OWNER_USERNAME: 'owner_test',
+  SEED_OWNER_PASSWORD: 'TestOwnerPassword123',
+  SEED_OWNER_FULLNAME: 'Owner Test',
+  SEED_MANAGER_USERNAME: 'manager_test',
+  SEED_MANAGER_PASSWORD: 'TestManagerPassword123',
+  SEED_MANAGER_FULLNAME: 'Manager Test',
+  SEED_CASHIER_USERNAME: 'cashier_test',
+  SEED_CASHIER_PASSWORD: 'TestCashierPassword123',
+  SEED_CASHIER_FULLNAME: 'Cashier Test',
+  RATE_LIMIT_WINDOW_MS: '60000',
+  RATE_LIMIT_MAX_REQUESTS: '100',
+  AUTH_RATE_LIMIT_MAX: '20',
+  LOG_LEVEL: 'error',
+});
