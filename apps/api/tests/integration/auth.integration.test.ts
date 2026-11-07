@@ -304,6 +304,25 @@ describe('M01-001 Integration: Auth Service, Lockout, Token Rotation & Rate Limi
       .set('X-Forwarded-For', '198.51.100.6')
       .send({ username: 'kasir01', password: 'UpdatedPass456!' });
     expect(relogin.status).toBe(200);
+
+    // M01-002: bila akun dinonaktifkan di DB saat access token masih aktif, request langsung ditolak 403
+    const activeToken = relogin.body.data.accessToken as string;
+    await prismaClient!.user.update({
+      where: { username: 'kasir01' },
+      data: { isActive: false },
+    });
+
+    const rejectedMidSession = await request(app)
+      .get('/v1/auth/me')
+      .set('X-Forwarded-For', '198.51.100.6')
+      .set('Authorization', `Bearer ${activeToken}`);
+    expect(rejectedMidSession.status).toBe(403);
+    expect(rejectedMidSession.body.error.code).toBe(ERROR_CODES.ACCOUNT_INACTIVE);
+
+    await prismaClient!.user.update({
+      where: { username: 'kasir01' },
+      data: { isActive: true },
+    });
   });
 
   it('TC-SEC-001: kebal terhadap payload SQL Injection pada endpoint login', async () => {
