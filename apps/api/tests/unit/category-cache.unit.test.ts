@@ -9,7 +9,7 @@ describe('M02-001 Unit: cache config & CacheStore', () => {
   it('buildCacheConfig memvalidasi env wajib dan melempar error bila kosong', () => {
     expect(() => buildCacheConfig({})).toThrow(/Konfigurasi cache tidak valid/);
     expect(buildCacheConfig({ CACHE_KEY_PREFIX: 'ib', CACHE_CATEGORY_TTL_SECONDS: '120' })).toEqual(
-      { keyPrefix: 'ib', categoryTtlSeconds: 120 },
+      { keyPrefix: 'ib', categoryTtlSeconds: 120, productTtlSeconds: 300 },
     );
   });
 
@@ -60,7 +60,7 @@ describe('M02-001 Unit: cache config & CacheStore', () => {
 });
 
 describe('M02-001 Unit: CategoryService edge cases', () => {
-  const cfg = { keyPrefix: 'x', categoryTtlSeconds: 60 };
+  const cfg = { keyPrefix: 'x', categoryTtlSeconds: 60, productTtlSeconds: 300 };
   const actor = { userId: 'u1', ipAddress: null, userAgent: null };
 
   it('list mengabaikan cache korup dan memuat ulang dari database', async () => {

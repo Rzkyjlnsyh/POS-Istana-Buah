@@ -60,5 +60,6 @@ Object.assign(process.env, {
   AUTH_RATE_LIMIT_MAX: '20',
   CACHE_KEY_PREFIX: 'cache-test',
   CACHE_CATEGORY_TTL_SECONDS: '300',
+  CACHE_PRODUCT_TTL_SECONDS: '300',
   LOG_LEVEL: 'error',
 });
