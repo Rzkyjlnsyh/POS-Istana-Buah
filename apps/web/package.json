@@ -1,0 +1,33 @@
+{
+  "name": "@istana-buah/web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Istana Buah POS - Frontend PWA (React + Vite + TypeScript)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "prebuild": "pnpm --filter @istana-buah/shared build",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "pretypecheck": "pnpm --filter @istana-buah/shared build",
+    "typecheck": "tsc --noEmit",
+    "pretest": "pnpm --filter @istana-buah/shared build",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@istana-buah/shared": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.1.0",
+    "jsdom": "^25.0.1",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.0"
+  }
+}

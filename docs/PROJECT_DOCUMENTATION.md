@@ -1935,7 +1935,7 @@ Proyek Istana Buah
 | ID | Status | Bukti |
 |----|--------|-------|
 | ENV-001 | ✅ DONE | `pnpm check:node` OK (Node 24.18 ≥ 20); `pnpm lint` & `pnpm format:check` exit 0; pre-commit (eslint) menolak file buruk (exit 1); commit-msg (commitlint) menolak pesan non-conventional (exit 1) |
-| ENV-002 | ⏳ TODO | - |
+| ENV-002 | ✅ DONE | pnpm workspace (apps/web, apps/api, packages/shared); `pnpm test`: shared 6, api 12, web 3 passed (coverage 100%); `pnpm build` exit 0; API `GET /health` → 200 `{"status":"ok",...}`; web dev (Vite) → 200; web & api mengimpor `@istana-buah/shared` |
 | ENV-003 | ⏳ TODO | - |
 | ENV-004 | ⏳ TODO | - |
 | ENV-005 | ⏳ TODO | - |
