@@ -12,7 +12,4 @@ export {
   type RefreshTokenResponseData,
 } from '@istana-buah/shared';
 
-export interface RequestClientMeta {
-  ipAddress: string | null;
-  userAgent: string | null;
-}
+export type { RequestClientMeta } from '../../utils/request-meta';

@@ -1,27 +1,9 @@
 import { ERROR_CODES } from '@istana-buah/shared';
 import type { Request, Response } from 'express';
 import { AppError } from '../../utils/app-error';
-import type {
-  ChangePasswordInput,
-  LoginInput,
-  LogoutInput,
-  RefreshTokenInput,
-  RequestClientMeta,
-} from './auth.dto';
+import { extractClientMeta } from '../../utils/request-meta';
+import type { ChangePasswordInput, LoginInput, LogoutInput, RefreshTokenInput } from './auth.dto';
 import type { AuthService } from './auth.service';
-
-function extractClientMeta(req: Request): RequestClientMeta {
-  const forwarded = req.headers['x-forwarded-for'];
-  const ipFromHeader =
-    typeof forwarded === 'string' && forwarded.trim().length > 0
-      ? (forwarded.split(',')[0]?.trim() ?? null)
-      : null;
-
-  return {
-    ipAddress: ipFromHeader ?? req.ip ?? req.socket.remoteAddress ?? null,
-    userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
-  };
-}
 
 function requireAuthenticatedUserId(req: Request): string {
   if (!req.authUser) {

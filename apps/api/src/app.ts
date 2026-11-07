@@ -5,6 +5,8 @@ import express, { Router, type Express } from 'express';
 import helmet from 'helmet';
 import type { AppConfig } from './config/app.config';
 import { authConfig, type AuthConfig } from './config/auth.config';
+import { cacheConfig, type CacheConfig } from './config/cache.config';
+import { RedisCacheStore, type CacheStore } from './lib/cache';
 import { prisma } from './lib/prisma';
 import { redis } from './lib/redis';
 import { createAuthenticateMiddleware } from './middleware/authenticate';
@@ -16,6 +18,8 @@ import {
 } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/requestLogger';
 import { createAuthRouter } from './modules/auth/auth.routes';
+import { createCategoryRouter } from './modules/categories/category.routes';
+import { CategoryService } from './modules/categories/category.service';
 import { AuthService } from './modules/auth/auth.service';
 import { createHealthRouter, type HealthCheckDependencies } from './utils/health.routes';
 import { JwtTokenService } from './utils/jwt';
@@ -25,6 +29,8 @@ export interface AppDependencies {
   prismaClient?: PrismaClient;
   rateLimitStore?: RateLimitStore;
   authCfg?: AuthConfig;
+  cacheStore?: CacheStore;
+  cacheCfg?: CacheConfig;
 }
 
 /** Membangun Express app (tanpa listen) agar mudah diuji dengan Supertest. */
@@ -33,11 +39,14 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
 
   const db = deps.prismaClient ?? prisma;
   const effectiveAuthCfg = deps.authCfg ?? authConfig;
+  const effectiveCacheCfg = deps.cacheCfg ?? cacheConfig;
   const rateStore = deps.rateLimitStore ?? new RedisRateLimitStore(redis);
+  const cacheStore = deps.cacheStore ?? new RedisCacheStore(redis, effectiveCacheCfg.keyPrefix);
 
   const jwtService = new JwtTokenService(effectiveAuthCfg.jwt);
   const authService = new AuthService(db, jwtService, effectiveAuthCfg);
   const authenticate = createAuthenticateMiddleware({ jwtService, prismaClient: db });
+  const categoryService = new CategoryService(db, cacheStore, effectiveCacheCfg);
 
   const globalRateLimiter = createRateLimiter({
     tier: 'global',
@@ -72,6 +81,8 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
       authenticate,
     }),
   );
+
+  v1Router.use('/categories', createCategoryRouter({ categoryService, authenticate }));
 
   app.use('/v1', v1Router);
 
