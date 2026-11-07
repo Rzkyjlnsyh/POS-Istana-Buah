@@ -14,15 +14,22 @@ export interface TokenRotationPayload {
   user?: AuthUser;
 }
 
+export interface SessionNotice {
+  title: string;
+  description: string;
+}
+
 export interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
   isAuthenticated: boolean;
   isHydrated: boolean;
+  sessionNotice: SessionNotice | null;
   setSession: (payload: SessionPayload) => void;
   updateTokens: (payload: TokenRotationPayload) => void;
   setUser: (user: AuthUser) => void;
-  clearSession: () => void;
+  clearSession: (notice?: SessionNotice | null) => void;
+  clearSessionNotice: () => void;
   setHydrated: (hydrated: boolean) => void;
   getRefreshToken: () => string | null;
 }
@@ -37,6 +44,7 @@ export function createAuthStore(storage: RefreshTokenStorage = defaultRefreshTok
     accessToken: null,
     isAuthenticated: false,
     isHydrated: false,
+    sessionNotice: null,
 
     setSession: ({ accessToken, refreshToken, user }) => {
       storage.setRefreshToken(refreshToken);
@@ -45,6 +53,7 @@ export function createAuthStore(storage: RefreshTokenStorage = defaultRefreshTok
         accessToken,
         isAuthenticated: true,
         isHydrated: true,
+        sessionNotice: null,
       });
     },
 
@@ -64,14 +73,19 @@ export function createAuthStore(storage: RefreshTokenStorage = defaultRefreshTok
       }));
     },
 
-    clearSession: () => {
+    clearSession: (notice = null) => {
       storage.clearRefreshToken();
       set({
         user: null,
         accessToken: null,
         isAuthenticated: false,
         isHydrated: true,
+        sessionNotice: notice,
       });
+    },
+
+    clearSessionNotice: () => {
+      set({ sessionNotice: null });
     },
 
     setHydrated: (hydrated) => {
