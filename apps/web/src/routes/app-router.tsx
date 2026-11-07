@@ -1,70 +1,38 @@
-import { LogOut } from 'lucide-react';
 import { useEffect } from 'react';
-import { Navigate, Route, Routes, useNavigate } from 'react-router';
-import { OrchardBrandMark } from '../components/common/brand-mark';
-import { Button } from '../components/ui/button';
+import { Navigate, Route, Routes } from 'react-router';
+import { AdminLayout } from '../components/layout/admin-layout';
+import { PosShellLayout } from '../components/layout/pos-shell-layout';
 import { webConfig } from '../config/app.config';
-import { bootstrapAuthSession, logoutRequest } from '../features/auth/api/auth-api';
+import { bootstrapAuthSession } from '../features/auth/api/auth-api';
 import { LoginPage } from '../features/auth/pages/login-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
+import { ROLE_LABELS_ID } from './navigation-config';
+import { RequireAuth, RequireRole } from './protected-route';
 
-function AuthenticatedWorkspaceView({ sectionTitle }: { sectionTitle: string }) {
-  const navigate = useNavigate();
+function ModuleWorkspaceSection({ title, description }: { title: string; description: string }) {
   const user = useAuthStore((state) => state.user);
-  const getRefreshToken = useAuthStore((state) => state.getRefreshToken);
-  const clearSession = useAuthStore((state) => state.clearSession);
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  const handleLogout = async () => {
-    const refreshToken = getRefreshToken();
-    try {
-      await logoutRequest(refreshToken);
-    } catch {
-      // Sesi lokal tetap dibersihkan meskipun jaringan terputus saat logout
-    } finally {
-      clearSession();
-      await navigate('/login', { replace: true });
-    }
-  };
 
   return (
-    <div className="min-h-dvh bg-surface-canvas text-ink-primary">
-      <header className="border-b border-border-subtle bg-primary-900 px-4 py-3 text-white sm:px-6">
-        <div className="mx-auto flex max-w-container items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <OrchardBrandMark size={36} />
-            <div>
-              <p className="text-sm font-bold tracking-tight">{webConfig.appName}</p>
-              <p className="text-xs text-primary-100">
-                {user.fullName} ({user.role})
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              void handleLogout();
-            }}
-          >
-            <LogOut className="h-4 w-4" aria-hidden="true" />
-            <span>Keluar</span>
-          </Button>
-        </div>
-      </header>
+    <section className="rounded-2xl border border-border-subtle bg-surface-panel p-6 shadow-panel sm:p-8">
+      <h1 className="text-2xl font-bold tracking-tight text-ink-primary">{title}</h1>
+      <p className="mt-2 text-sm leading-relaxed text-ink-secondary">{description}</p>
+      {user ? (
+        <p className="mt-4 border-t border-border-subtle pt-4 text-xs text-ink-muted">
+          Sesi aktif: <span className="font-semibold text-ink-primary">{user.fullName}</span> (
+          {ROLE_LABELS_ID[user.role]})
+        </p>
+      ) : null}
+    </section>
+  );
+}
 
-      <main className="mx-auto max-w-container px-4 py-8 sm:px-6">
-        <section className="rounded-2xl border border-border-subtle bg-surface-panel p-6 shadow-panel">
-          <h1 className="text-2xl font-bold text-ink-primary">{sectionTitle}</h1>
-          <p className="mt-2 text-sm text-ink-secondary">
-            Selamat bertugas,{' '}
-            <span className="font-semibold text-ink-primary">{user.fullName}</span>. Sesi Anda aktif
-            sebagai <span className="font-semibold">{user.role}</span>.
-          </p>
-        </section>
-      </main>
+function PosWorkspaceOverview() {
+  return (
+    <div className="mx-auto w-full max-w-container flex-1 px-4 py-6 sm:px-6">
+      <ModuleWorkspaceSection
+        title="Layar Kasir (POS)"
+        description="Area kerja kasir siap menerima transaksi penjualan buah segar berbasis berat (kg) maupun satuan (unit)."
+      />
     </div>
   );
 }
@@ -89,6 +57,7 @@ export function AppRoutes() {
   if (!isHydrated) {
     return (
       <main
+        role="status"
         aria-busy="true"
         className="flex min-h-dvh items-center justify-center bg-surface-canvas px-4 text-sm font-medium text-ink-secondary"
       >
@@ -101,14 +70,145 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<RootIndexRedirect />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/pos"
-        element={<AuthenticatedWorkspaceView sectionTitle="Layar Kasir (POS)" />}
-      />
-      <Route
-        path="/dashboard"
-        element={<AuthenticatedWorkspaceView sectionTitle="Ringkasan Operasional Toko" />}
-      />
+
+      {/* Rute terautentikasi dengan guard peran RBAC (M01-004) */}
+      <Route element={<RequireAuth />}>
+        <Route element={<PosShellLayout />}>
+          <Route
+            path="/pos"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER', 'CASHIER']}>
+                <PosWorkspaceOverview />
+              </RequireRole>
+            }
+          />
+        </Route>
+
+        <Route element={<AdminLayout />}>
+          <Route
+            path="/dashboard"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
+                <ModuleWorkspaceSection
+                  title="Ringkasan Operasional Toko"
+                  description="Pantau omset harian, transaksi aktif, dan ketersediaan stok buah segar secara real-time."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/shifts"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER', 'CASHIER']}>
+                <ModuleWorkspaceSection
+                  title="Shift Kasir"
+                  description="Kelola pembukaan kas awal, ringkasan transaksi shift, dan rekonsiliasi penutupan kasir."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/products"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
+                <ModuleWorkspaceSection
+                  title="Manajemen Produk"
+                  description="Kelola katalog buah lokal, buah impor, harga jual per kg/unit, dan barcode EAN-13."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/categories"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
+                <ModuleWorkspaceSection
+                  title="Kategori Produk"
+                  description="Atur pengelompokan komoditas buah segar agar pencarian di meja kasir lebih cepat."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/stock"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
+                <ModuleWorkspaceSection
+                  title="Stok Gudang & Opname"
+                  description="Catat penerimaan barang dari supplier, stok opname fisik, dan pantau mutasi stok."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/suppliers"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
+                <ModuleWorkspaceSection
+                  title="Supplier & Purchase Order"
+                  description="Kelola daftar pemasok buah segar serta pesanan pembelian toko."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/waste"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
+                <ModuleWorkspaceSection
+                  title="Catatan Penyusutan (Waste)"
+                  description="Dokumentasikan buah rusak, busuk, atau susut timbangan beserta nilai kerugiannya."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
+                <ModuleWorkspaceSection
+                  title="Laporan Penjualan & Stok"
+                  description="Tinjau performa penjualan harian, produk terlaris, margin kotor, dan ekspor laporan."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/employees"
+            element={
+              <RequireRole allowedRoles={['OWNER']}>
+                <ModuleWorkspaceSection
+                  title="Manajemen Pegawai"
+                  description="Kelola akun kasir dan manajer toko, hak akses peran, serta status keaktifan pegawai."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <RequireRole allowedRoles={['OWNER']}>
+                <ModuleWorkspaceSection
+                  title="Pengaturan Sistem"
+                  description="Konfigurasi identitas struk toko, tarif pajak, dan preferensi perangkat kasir."
+                />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/account/password"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER', 'CASHIER']}>
+                <ModuleWorkspaceSection
+                  title="Ubah Password Akun"
+                  description="Perbarui password akun Anda secara berkala untuk menjaga keamanan akses toko."
+                />
+              </RequireRole>
+            }
+          />
+        </Route>
+      </Route>
+
       <Route path="*" element={<RootIndexRedirect />} />
     </Routes>
   );

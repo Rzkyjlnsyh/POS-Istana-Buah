@@ -12,6 +12,7 @@ import { Label } from '../../../components/ui/label';
 import { webConfig } from '../../../config/app.config';
 import { useNetworkStatus } from '../../../hooks/use-network-status';
 import { type AuthErrorCopy, resolveAuthErrorCopy } from '../../../lib/api/api-error';
+import { isPathAllowedForRole } from '../../../routes/navigation-config';
 import { getDefaultRouteForRole, useAuthStore } from '../../../stores/auth-store';
 import { loginRequest } from '../api/auth-api';
 
@@ -84,7 +85,10 @@ export function LoginPage() {
   if (isAuthenticated && user) {
     const fallbackRoute = getDefaultRouteForRole(user.role);
     const redirectState = location.state as LocationRedirectState | null;
-    const targetRoute = sanitizeInternalRedirectPath(redirectState?.from, fallbackRoute);
+    const candidateRoute = sanitizeInternalRedirectPath(redirectState?.from, fallbackRoute);
+    const targetRoute = isPathAllowedForRole(candidateRoute, user.role)
+      ? candidateRoute
+      : fallbackRoute;
     return <Navigate to={targetRoute} replace />;
   }
 
@@ -100,7 +104,10 @@ export function LoginPage() {
       setSession(session);
       const fallbackRoute = getDefaultRouteForRole(session.user.role);
       const redirectState = location.state as LocationRedirectState | null;
-      const targetRoute = sanitizeInternalRedirectPath(redirectState?.from, fallbackRoute);
+      const candidateRoute = sanitizeInternalRedirectPath(redirectState?.from, fallbackRoute);
+      const targetRoute = isPathAllowedForRole(candidateRoute, session.user.role)
+        ? candidateRoute
+        : fallbackRoute;
       await navigate(targetRoute, { replace: true });
     } catch (error: unknown) {
       setServerError(resolveAuthErrorCopy(error));
