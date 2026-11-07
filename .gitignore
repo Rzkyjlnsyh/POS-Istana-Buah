@@ -1,0 +1,44 @@
+﻿# Dependencies
+node_modules/
+.pnpm-store/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Logs & temp
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+*.tmp
+.tmp/
+tmp/
+
+# Uploads
+uploads/
+
+# Agent-local (jangan masuk repo, lihat AGENTS.md Bagian 6)
+.agent/
+AGENTS.md
+ISTANA_BUAH_PROJECT_DOCUMENTATION.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Test artifacts
+playwright-report/
+test-results/
