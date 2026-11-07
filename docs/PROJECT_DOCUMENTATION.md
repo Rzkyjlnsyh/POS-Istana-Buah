@@ -2063,6 +2063,43 @@ Proyek Istana Buah
 | | | - Halaman laporan stok | P1 | 4h | - | Stok lengkap |
 | | | - Export PDF/Excel | P1 | 5h | - | File dapat didownload |
 
+**Checklist Progres FASE 1**
+
+| ID | Status | Bukti |
+|----|--------|-------|
+| M01-001 | ✅ DONE | `AuthService` (`bcrypt` cost 12 + `jose` RS256 asymmetric keypair, refresh token SHA-256 rotation + reuse detection + atomic `$transaction` anti-race, logout revoke, change-password, lockout 5x gagal, Redis Lua atomic rate limiter 20 req/menit); lulus `TC-AUTH-001`, `TC-AUTH-002`, `TC-AUTH-003`, `TC-SEC-001` (SQLi), `TC-SEC-002` (429); `pnpm test` exit 0 (shared 10, api 55, web 3 = 68 passed, coverage 97.24%), `pnpm audit --prod` 0 vuln |
+| M01-002 | ⏳ TODO | - |
+| M01-003 | ⏳ TODO | - |
+| M01-004 | ⏳ TODO | - |
+| M01-005 | ⏳ TODO | - |
+| M01-006 | ⏳ TODO | - |
+| M02-001 | ⏳ TODO | - |
+| M02-002 | ⏳ TODO | - |
+| M02-003 | ⏳ TODO | - |
+| M02-004 | ⏳ TODO | - |
+| M02-005 | ⏳ TODO | - |
+| M02-006 | ⏳ TODO | - |
+| M02-007 | ⏳ TODO | - |
+| M02-008 | ⏳ TODO | - |
+| M03-001 | ⏳ TODO | - |
+| M03-002 | ⏳ TODO | - |
+| M03-003 | ⏳ TODO | - |
+| M03-004 | ⏳ TODO | - |
+| M03-005 | ⏳ TODO | - |
+| M03-006 | ⏳ TODO | - |
+| M03-007 | ⏳ TODO | - |
+| M03-008 | ⏳ TODO | - |
+| M03-009 | ⏳ TODO | - |
+| M04-001 | ⏳ TODO | - |
+| M04-002 | ⏳ TODO | - |
+| M05-001 | ⏳ TODO | - |
+| M05-002 | ⏳ TODO | - |
+| M05-003 | ⏳ TODO | - |
+| M06-001 | ⏳ TODO | - |
+| M06-002 | ⏳ TODO | - |
+| M07-001 | ⏳ TODO | - |
+| M07-002 | ⏳ TODO | - |
+
 ---
 
 #### FASE 2: Extended Features
