@@ -11,6 +11,8 @@ export const buttonVariants = cva(
         primary: 'bg-primary-700 text-white hover:bg-primary-800 active:bg-primary-900',
         secondary:
           'border border-border-strong bg-surface-panel text-ink-primary hover:bg-surface-subtle active:bg-primary-50',
+        headerOutline:
+          'border border-primary-700 bg-primary-800/80 text-white hover:bg-primary-800 active:bg-primary-700 focus-visible:outline-white',
         ghost: 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary',
         destructive:
           'border border-semantic-danger-border bg-surface-panel text-semantic-danger-ink hover:bg-semantic-danger-bg focus-visible:outline-semantic-danger',
