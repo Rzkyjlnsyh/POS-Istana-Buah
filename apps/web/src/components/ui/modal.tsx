@@ -8,13 +8,14 @@ export interface ModalProps extends HTMLAttributes<HTMLDivElement> {
   title: string;
   description?: string;
   children: ReactNode;
-  size?: 'default' | 'lg' | 'sm';
+  size?: 'default' | 'lg' | 'sm' | 'xl';
 }
 
 const SIZE_CLASSES = {
   sm: 'max-w-md',
   default: 'max-w-lg',
   lg: 'max-w-2xl',
+  xl: 'max-w-3xl',
 };
 
 /**
