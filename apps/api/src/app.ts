@@ -22,6 +22,8 @@ import { createCategoryRouter } from './modules/categories/category.routes';
 import { CategoryService } from './modules/categories/category.service';
 import { createProductRouter } from './modules/products/product.routes';
 import { ProductService } from './modules/products/product.service';
+import { createTransactionRouter } from './modules/transactions/transaction.routes';
+import { TransactionService } from './modules/transactions/transaction.service';
 import { AuthService } from './modules/auth/auth.service';
 import { createHealthRouter, type HealthCheckDependencies } from './utils/health.routes';
 import { JwtTokenService } from './utils/jwt';
@@ -50,6 +52,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   const authenticate = createAuthenticateMiddleware({ jwtService, prismaClient: db });
   const categoryService = new CategoryService(db, cacheStore, effectiveCacheCfg);
   const productService = new ProductService(db, cacheStore, effectiveCacheCfg);
+  const transactionService = new TransactionService(db, cacheStore);
 
   const globalRateLimiter = createRateLimiter({
     tier: 'global',
@@ -87,6 +90,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
 
   v1Router.use('/categories', createCategoryRouter({ categoryService, authenticate }));
   v1Router.use('/products', createProductRouter({ productService, authenticate }));
+  v1Router.use('/transactions', createTransactionRouter({ transactionService, authenticate }));
 
   app.use('/v1', v1Router);
 

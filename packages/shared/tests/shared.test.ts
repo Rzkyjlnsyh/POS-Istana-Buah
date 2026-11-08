@@ -16,6 +16,7 @@ import {
   categoryListQuerySchema,
   changePasswordSchema,
   createProductSchema,
+  createTransactionSchema,
   generateBarcodeQuerySchema,
   generateProductCsvTemplate,
   isValidEan13,
@@ -25,7 +26,9 @@ import {
   parseCsv,
   productListQuerySchema,
   refreshTokenSchema,
+  transactionListQuerySchema,
   updateProductSchema,
+  voidTransactionSchema,
 } from '../src';
 
 describe('shared constants', () => {
@@ -404,5 +407,68 @@ describe('Batch Import Product Validators (M02-007)', () => {
       price: 10000,
     }));
     expect(batchImportProductsSchema.safeParse({ items: overLimit }).success).toBe(false);
+  });
+});
+
+describe('Transaction Validators (M03-001)', () => {
+  const validProductId = '123e4567-e89b-12d3-a456-426614174000';
+
+  it('createTransactionSchema memvalidasi data transaksi POS', () => {
+    const validCash = {
+      items: [
+        {
+          productId: validProductId,
+          quantity: 1.5,
+          unitPrice: 25000,
+          discountAmount: 0,
+        },
+      ],
+      discountAmount: 0,
+      paymentMethod: 'CASH',
+      amountPaid: 40000,
+    };
+    expect(createTransactionSchema.safeParse(validCash).success).toBe(true);
+
+    // CASH pembayaran kurang dari total belanja (1.5 * 25000 = 37500 > 30000)
+    const underpaidCash = {
+      ...validCash,
+      amountPaid: 30000,
+    };
+    expect(createTransactionSchema.safeParse(underpaidCash).success).toBe(false);
+
+    // QRIS tidak memerlukan amountPaid melebihi subtotal (bisa pas)
+    const validQris = {
+      items: [
+        {
+          productId: validProductId,
+          quantity: 2,
+          unitPrice: 15000,
+        },
+      ],
+      paymentMethod: 'QRIS',
+      amountPaid: 30000,
+    };
+    expect(createTransactionSchema.safeParse(validQris).success).toBe(true);
+  });
+
+  it('voidTransactionSchema memvalidasi alasan void', () => {
+    expect(voidTransactionSchema.safeParse({ reason: 'Salah input berat timbangan' }).success).toBe(
+      true,
+    );
+    expect(voidTransactionSchema.safeParse({ reason: 'no' }).success).toBe(false); // < 3 karakter
+    expect(voidTransactionSchema.safeParse({ reason: '' }).success).toBe(false);
+  });
+
+  it('transactionListQuerySchema memvalidasi filter query riwayat transaksi', () => {
+    const parsed = transactionListQuerySchema.parse({
+      page: '1',
+      limit: '20',
+      status: 'COMPLETED',
+      paymentMethod: 'CASH',
+    });
+    expect(parsed.page).toBe(1);
+    expect(parsed.limit).toBe(20);
+    expect(parsed.status).toBe('COMPLETED');
+    expect(parsed.paymentMethod).toBe('CASH');
   });
 });
