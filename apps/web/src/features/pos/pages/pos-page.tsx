@@ -1,13 +1,16 @@
 import type { CategoryDto, ProductDto } from '@istana-buah/shared';
-import { ShoppingCart } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ShoppingCart } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { getCategories } from '../../categories/api/category-api';
-import { getProducts } from '../../products/api/product-api';
+import { getProductByBarcode, getProducts } from '../../products/api/product-api';
+import { PosCameraScannerModal } from '../components/pos-camera-scanner-modal';
 import { PosCartSection } from '../components/pos-cart-section';
 import { PosProductSection } from '../components/pos-product-section';
 import { PosStatusBar } from '../components/pos-status-bar';
+import { useUsbBarcodeScanner } from '../hooks/use-usb-barcode-scanner';
 import { usePosCartStore } from '../stores/pos-cart-store';
 import { formatRupiah } from '../utils/formatters';
+import { scannerSound } from '../utils/scanner-sound';
 
 export function PosPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,6 +19,11 @@ export function PosPage() {
   const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [scanNotification, setScanNotification] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const addItem = usePosCartStore((state) => state.addItem);
   const clearCart = usePosCartStore((state) => state.clearCart);
@@ -23,6 +31,13 @@ export function PosPage() {
   const getTotalAmount = usePosCartStore((state) => state.getTotalAmount);
 
   const totalAmount = getTotalAmount();
+
+  const showNotification = useCallback((type: 'success' | 'error', message: string) => {
+    setScanNotification({ type, message });
+    setTimeout(() => {
+      setScanNotification((prev) => (prev?.message === message ? null : prev));
+    }, 4000);
+  }, []);
 
   // 1. Muat Kategori Aktif
   const loadCategories = useCallback(async () => {
@@ -72,6 +87,48 @@ export function PosPage() {
     addItem(product);
   };
 
+  const handleBarcodeScan = useCallback(
+    async (barcode: string) => {
+      const cleanCode = barcode.trim();
+      if (!cleanCode) return;
+
+      // Cari di memori lokal terlebih dahulu
+      let matchedProduct = products.find((p) => p.barcodes?.some((b) => b.barcode === cleanCode));
+
+      // Jika tidak ditemukan di memori lokal, lookup via endpoint API
+      if (!matchedProduct) {
+        try {
+          matchedProduct = await getProductByBarcode(cleanCode);
+        } catch {
+          matchedProduct = undefined;
+        }
+      }
+
+      if (!matchedProduct) {
+        scannerSound.playErrorBeep();
+        showNotification('error', `Barcode "${cleanCode}" tidak terdaftar.`);
+        return;
+      }
+
+      if (Number(matchedProduct.stockQty) <= 0) {
+        scannerSound.playErrorBeep();
+        showNotification('error', `Stok ${matchedProduct.name} habis.`);
+        return;
+      }
+
+      addItem(matchedProduct);
+      scannerSound.playSuccessBeep();
+      showNotification('success', `${matchedProduct.name} ditambahkan ke keranjang.`);
+    },
+    [addItem, products, showNotification],
+  );
+
+  // Pasang listener Scanner Hardware USB HID
+  useUsbBarcodeScanner({
+    onScan: handleBarcodeScan,
+    enabled: true,
+  });
+
   const handlePayCash = useCallback(() => {
     // Akan diintegrasikan dengan Payment Modal (M03-006)
   }, []);
@@ -120,6 +177,35 @@ export function PosPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       <h1 className="sr-only">Layar Kasir (POS)</h1>
 
+      {/* Notifikasi Pemindaian Barcode */}
+      {scanNotification ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`flex items-center justify-between border-b px-4 py-2 text-xs font-semibold ${
+            scanNotification.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {scanNotification.type === 'success' ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden="true" />
+            ) : (
+              <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" aria-hidden="true" />
+            )}
+            <span>{scanNotification.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setScanNotification(null)}
+            className="text-xs hover:underline"
+          >
+            Tutup
+          </button>
+        </div>
+      ) : null}
+
       {/* Mobile Tab Switcher (<lg) */}
       <div className="flex border-b border-border-subtle bg-surface-panel lg:hidden">
         <button
@@ -162,6 +248,8 @@ export function PosPage() {
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onSelectProduct={handleSelectProduct}
+            onOpenScannerModal={() => setIsCameraModalOpen(true)}
+            onBarcodeSubmit={handleBarcodeScan}
             isLoading={isLoading}
           />
         </div>
@@ -196,6 +284,13 @@ export function PosPage() {
           </button>
         </div>
       ) : null}
+
+      {/* Modal Kamera Scanner Barcode (M03-004) */}
+      <PosCameraScannerModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        onScan={handleBarcodeScan}
+      />
 
       {/* Bottom Status Bar */}
       <PosStatusBar />

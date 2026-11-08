@@ -134,7 +134,7 @@ export function PosCartSection({
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-border-subtle">
+          <ul aria-label="Daftar item keranjang" className="divide-y divide-border-subtle">
             {items.map((item) => (
               <li
                 key={item.id}
