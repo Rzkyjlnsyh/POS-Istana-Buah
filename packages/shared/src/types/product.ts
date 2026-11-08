@@ -6,6 +6,15 @@ export interface ProductBarcodeDto {
   isPrimary: boolean;
 }
 
+export interface AddProductBarcodeDto {
+  barcode: string;
+  isPrimary?: boolean;
+}
+
+export interface GenerateBarcodeResult {
+  barcode: string;
+}
+
 export interface ProductCategoryRef {
   id: string;
   name: string;

@@ -1,4 +1,11 @@
-import { ERROR_CODES, type PaginationMeta, type UserRole } from '@istana-buah/shared';
+import { randomInt } from 'node:crypto';
+import {
+  ERROR_CODES,
+  MAX_BARCODES_PER_PRODUCT,
+  calculateEan13CheckDigit,
+  type PaginationMeta,
+  type UserRole,
+} from '@istana-buah/shared';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { CacheConfig } from '../../config/cache.config';
 import type { CacheStore } from '../../lib/cache';
@@ -6,8 +13,11 @@ import { AppError } from '../../utils/app-error';
 import { recordAuditLog } from '../../utils/audit-logger';
 import { CATEGORY_CACHE_NAMESPACE } from '../categories/category.service';
 import type {
+  AddProductBarcode,
   CreateProductInput,
+  GenerateBarcodeResult,
   ProductActorContext,
+  ProductBarcodeDto,
   ProductDto,
   ProductListQuery,
   UpdateProductInput,
@@ -15,6 +25,9 @@ import type {
 
 export const PRODUCT_CACHE_NAMESPACE = 'products';
 const PRODUCT_ENTITY = 'products';
+const BARCODE_ENTITY = 'barcodes';
+const DEFAULT_IN_STORE_BARCODE_PREFIX = '200';
+const MAX_BARCODE_COLLISION_RETRIES = 10;
 
 export interface ProductListResult {
   items: ProductDto[];
@@ -604,5 +617,345 @@ export class ProductService {
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
     ]);
+  }
+
+  /**
+   * Menghasilkan barcode unik bertaraf EAN-13 standar GS1 (M02-003).
+   * - Format 13 digit: [Prefix 2-4 digit][Random numerik][Check digit Modulus 10]
+   * - Menjamin keunikan dengan verifikasi DB dan retry loop otomatis bila terjadi tabrakan (collision).
+   */
+  async generateBarcode(prefix = DEFAULT_IN_STORE_BARCODE_PREFIX): Promise<GenerateBarcodeResult> {
+    const cleanPrefix = prefix.trim();
+    if (!/^\d{2,4}$/.test(cleanPrefix)) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Prefix barcode harus berupa 2-4 digit angka numerik',
+        400,
+        { prefix },
+      );
+    }
+
+    const randomDigitsLength = 12 - cleanPrefix.length;
+
+    for (let attempt = 0; attempt < MAX_BARCODE_COLLISION_RETRIES; attempt++) {
+      let candidate12 = cleanPrefix;
+      for (let i = 0; i < randomDigitsLength; i++) {
+        candidate12 += String(randomInt(0, 10));
+      }
+
+      const checkDigit = calculateEan13CheckDigit(candidate12);
+      const barcode = `${candidate12}${String(checkDigit)}`;
+
+      const existing = await this.prisma.barcode.findUnique({
+        where: { barcode },
+      });
+
+      if (!existing) {
+        return { barcode };
+      }
+    }
+
+    throw new AppError(
+      ERROR_CODES.INTERNAL_ERROR,
+      'Gagal menghasilkan barcode unik setelah beberapa percobaan collision',
+      500,
+    );
+  }
+
+  /**
+   * Menghasilkan barcode baru dan langsung melekatkannya ke produk (M02-003).
+   */
+  async generateAndAttachBarcode(
+    productId: string,
+    prefix: string | undefined,
+    isPrimary: boolean | undefined,
+    actor: ProductActorContext,
+  ): Promise<ProductBarcodeDto> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      include: { barcodes: true },
+    });
+
+    if (!product) {
+      throw new AppError(ERROR_CODES.PRODUCT_NOT_FOUND, 'Produk tidak ditemukan', 404, {
+        id: productId,
+      });
+    }
+
+    if (product.barcodes.length >= MAX_BARCODES_PER_PRODUCT) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        `Maksimal ${String(MAX_BARCODES_PER_PRODUCT)} barcode per produk`,
+        400,
+        { productId, currentCount: product.barcodes.length },
+      );
+    }
+
+    const { barcode } = await this.generateBarcode(prefix);
+    const shouldBePrimary = product.barcodes.length === 0 ? true : isPrimary === true;
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      if (shouldBePrimary && product.barcodes.length > 0) {
+        await tx.barcode.updateMany({
+          where: { productId, isPrimary: true },
+          data: { isPrimary: false },
+        });
+      }
+
+      const row = await tx.barcode.create({
+        data: {
+          productId,
+          barcode,
+          isPrimary: shouldBePrimary,
+        },
+      });
+
+      await recordAuditLog(tx, {
+        userId: actor.userId,
+        action: 'BARCODE_ATTACHED',
+        entity: BARCODE_ENTITY,
+        entityId: row.id,
+        newValues: {
+          productId,
+          barcode: row.barcode,
+          isPrimary: row.isPrimary,
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+
+      return row;
+    });
+
+    await this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE);
+
+    return {
+      id: created.id,
+      barcode: created.barcode,
+      isPrimary: created.isPrimary,
+    };
+  }
+
+  /**
+   * Mendaftarkan barcode yang diinput manual ke produk (M02-003).
+   */
+  async addBarcode(
+    productId: string,
+    input: AddProductBarcode,
+    actor: ProductActorContext,
+  ): Promise<ProductBarcodeDto> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      include: { barcodes: true },
+    });
+
+    if (!product) {
+      throw new AppError(ERROR_CODES.PRODUCT_NOT_FOUND, 'Produk tidak ditemukan', 404, {
+        id: productId,
+      });
+    }
+
+    if (product.barcodes.length >= MAX_BARCODES_PER_PRODUCT) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        `Maksimal ${String(MAX_BARCODES_PER_PRODUCT)} barcode per produk`,
+        400,
+        { productId, currentCount: product.barcodes.length },
+      );
+    }
+
+    const duplicate = await this.prisma.barcode.findUnique({
+      where: { barcode: input.barcode },
+    });
+
+    if (duplicate) {
+      throw new AppError(
+        ERROR_CODES.DUPLICATE_BARCODE,
+        'Barcode sudah terdaftar pada sistem',
+        409,
+        { barcode: input.barcode },
+      );
+    }
+
+    const shouldBePrimary = product.barcodes.length === 0 ? true : input.isPrimary === true;
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      if (shouldBePrimary && product.barcodes.length > 0) {
+        await tx.barcode.updateMany({
+          where: { productId, isPrimary: true },
+          data: { isPrimary: false },
+        });
+      }
+
+      const row = await tx.barcode.create({
+        data: {
+          productId,
+          barcode: input.barcode,
+          isPrimary: shouldBePrimary,
+        },
+      });
+
+      await recordAuditLog(tx, {
+        userId: actor.userId,
+        action: 'BARCODE_ATTACHED',
+        entity: BARCODE_ENTITY,
+        entityId: row.id,
+        newValues: {
+          productId,
+          barcode: row.barcode,
+          isPrimary: row.isPrimary,
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+
+      return row;
+    });
+
+    await this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE);
+
+    return {
+      id: created.id,
+      barcode: created.barcode,
+      isPrimary: created.isPrimary,
+    };
+  }
+
+  /**
+   * Menghapus salah satu barcode dari produk (M02-003).
+   * Bila barcode yang dihapus berstatus primer dan produk masih memiliki barcode lain,
+   * barcode tertua yang tersisa akan otomatis dipromosikan menjadi barcode primer.
+   */
+  async removeBarcode(
+    productId: string,
+    barcodeId: string,
+    actor: ProductActorContext,
+  ): Promise<void> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+    });
+
+    if (!product) {
+      throw new AppError(ERROR_CODES.PRODUCT_NOT_FOUND, 'Produk tidak ditemukan', 404, {
+        id: productId,
+      });
+    }
+
+    const existingBarcode = await this.prisma.barcode.findFirst({
+      where: { id: barcodeId, productId },
+    });
+
+    if (!existingBarcode) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Barcode tidak ditemukan pada produk ini', 404, {
+        barcodeId,
+        productId,
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.barcode.delete({
+        where: { id: barcodeId },
+      });
+
+      if (existingBarcode.isPrimary) {
+        const remaining = await tx.barcode.findFirst({
+          where: { productId },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (remaining) {
+          await tx.barcode.update({
+            where: { id: remaining.id },
+            data: { isPrimary: true },
+          });
+        }
+      }
+
+      await recordAuditLog(tx, {
+        userId: actor.userId,
+        action: 'BARCODE_REMOVED',
+        entity: BARCODE_ENTITY,
+        entityId: barcodeId,
+        oldValues: {
+          productId,
+          barcode: existingBarcode.barcode,
+          isPrimary: existingBarcode.isPrimary,
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+    });
+
+    await this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE);
+  }
+
+  /**
+   * Mengatur barcode tertentu menjadi barcode primer produk (M02-003).
+   */
+  async setPrimaryBarcode(
+    productId: string,
+    barcodeId: string,
+    actor: ProductActorContext,
+  ): Promise<ProductBarcodeDto> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+    });
+
+    if (!product) {
+      throw new AppError(ERROR_CODES.PRODUCT_NOT_FOUND, 'Produk tidak ditemukan', 404, {
+        id: productId,
+      });
+    }
+
+    const existingBarcode = await this.prisma.barcode.findFirst({
+      where: { id: barcodeId, productId },
+    });
+
+    if (!existingBarcode) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Barcode tidak ditemukan pada produk ini', 404, {
+        barcodeId,
+        productId,
+      });
+    }
+
+    if (existingBarcode.isPrimary) {
+      return {
+        id: existingBarcode.id,
+        barcode: existingBarcode.barcode,
+        isPrimary: existingBarcode.isPrimary,
+      };
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.barcode.updateMany({
+        where: { productId, isPrimary: true },
+        data: { isPrimary: false },
+      });
+
+      const row = await tx.barcode.update({
+        where: { id: barcodeId },
+        data: { isPrimary: true },
+      });
+
+      await recordAuditLog(tx, {
+        userId: actor.userId,
+        action: 'BARCODE_PRIMARY_CHANGED',
+        entity: BARCODE_ENTITY,
+        entityId: barcodeId,
+        newValues: { isPrimary: true },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+
+      return row;
+    });
+
+    await this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE);
+
+    return {
+      id: updated.id,
+      barcode: updated.barcode,
+      isPrimary: updated.isPrimary,
+    };
   }
 }
