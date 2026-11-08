@@ -7,6 +7,7 @@ import { bootstrapAuthSession } from '../features/auth/api/auth-api';
 import { ChangePasswordPage } from '../features/auth/pages/change-password-page';
 import { LoginPage } from '../features/auth/pages/login-page';
 import { CategoryPage } from '../features/categories/pages/category-page';
+import { ProductPage } from '../features/products/pages/product-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
 import { ROLE_LABELS_ID } from './navigation-config';
 import { RequireAuth, RequireRole } from './protected-route';
@@ -113,10 +114,7 @@ export function AppRoutes() {
             path="/products"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
-                <ModuleWorkspaceSection
-                  title="Manajemen Produk"
-                  description="Kelola katalog buah lokal, buah impor, harga jual per kg/unit, dan barcode EAN-13."
-                />
+                <ProductPage />
               </RequireRole>
             }
           />
