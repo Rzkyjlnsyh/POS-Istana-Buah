@@ -1,8 +1,8 @@
 import type { CategoryDto, ProductDto } from '@istana-buah/shared';
-import { AlertCircle, Barcode, CheckCircle2, Package, Search, X } from 'lucide-react';
+import { Barcode, ChevronLeft, ChevronRight, Package, Search, X } from 'lucide-react';
 import React, { useRef } from 'react';
 import { cn } from '../../../lib/cn';
-import { formatQuantity, formatRupiah } from '../utils/formatters';
+import { PosProductCard } from './pos-product-card';
 
 export interface PosProductSectionProps {
   products: ProductDto[];
@@ -26,6 +26,18 @@ export function PosProductSection({
   isLoading = false,
 }: PosProductSectionProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const categoryScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollCategories = (direction: 'left' | 'right') => {
+    if (categoryScrollRef.current) {
+      const scrollOffset = direction === 'left' ? -200 : 200;
+      if (typeof categoryScrollRef.current.scrollBy === 'function') {
+        categoryScrollRef.current.scrollBy({ left: scrollOffset, behavior: 'smooth' });
+      } else {
+        categoryScrollRef.current.scrollLeft += scrollOffset;
+      }
+    }
+  };
 
   return (
     <section
@@ -70,62 +82,88 @@ export function PosProductSection({
         </div>
       </div>
 
-      {/* 2. Tabs Kategori Horisontal */}
-      <div className="border-b border-border-subtle bg-surface-panel px-3 py-2">
-        <div
-          role="tablist"
-          aria-label="Filter kategori produk"
-          className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar"
-        >
+      {/* 2. Tabs Kategori Horisontal dengan Tombol Geser */}
+      <div className="relative border-b border-border-subtle bg-surface-panel px-3 py-2">
+        <div className="flex items-center gap-1">
+          {/* Tombol Geser Kiri */}
           <button
             type="button"
-            role="tab"
-            aria-selected={selectedCategoryId === null}
-            onClick={() => onSelectCategory(null)}
-            className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
-              selectedCategoryId === null
-                ? 'bg-primary-600 text-white shadow-sm'
-                : 'bg-surface-muted text-ink-secondary hover:bg-border-subtle hover:text-ink-primary',
-            )}
+            onClick={() => scrollCategories('left')}
+            aria-label="Geser kategori ke kiri"
+            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-surface-panel text-ink-muted hover:bg-surface-muted hover:text-ink-primary sm:flex"
           >
-            <span>Semua Produk</span>
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </button>
 
-          {categories.map((cat) => {
-            const isSelected = selectedCategoryId === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                role="tab"
-                aria-selected={isSelected}
-                onClick={() => onSelectCategory(cat.id)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
-                  isSelected
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'bg-surface-muted text-ink-secondary hover:bg-border-subtle hover:text-ink-primary',
-                )}
-              >
-                <span>{cat.name}</span>
-                {cat.productCount !== undefined && cat.productCount > 0 ? (
-                  <span
-                    className={cn(
-                      'rounded-full px-1.5 py-0.2 text-xs font-bold',
-                      isSelected ? 'bg-primary-700 text-white' : 'bg-surface-panel text-ink-muted',
-                    )}
-                  >
-                    {cat.productCount}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
+          {/* List Tab */}
+          <div
+            ref={categoryScrollRef}
+            role="tablist"
+            aria-label="Filter kategori produk"
+            className="flex flex-1 items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar scroll-smooth"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedCategoryId === null}
+              onClick={() => onSelectCategory(null)}
+              className={cn(
+                'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                selectedCategoryId === null
+                  ? 'bg-primary-600 text-white shadow-sm'
+                  : 'bg-surface-muted text-ink-secondary hover:bg-border-subtle hover:text-ink-primary',
+              )}
+            >
+              <span>Semua Produk</span>
+            </button>
+
+            {categories.map((cat) => {
+              const isSelected = selectedCategoryId === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  onClick={() => onSelectCategory(cat.id)}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                    isSelected
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'bg-surface-muted text-ink-secondary hover:bg-border-subtle hover:text-ink-primary',
+                  )}
+                >
+                  <span>{cat.name}</span>
+                  {cat.productCount !== undefined && cat.productCount > 0 ? (
+                    <span
+                      className={cn(
+                        'rounded-full px-1.5 py-0.2 text-xs font-bold',
+                        isSelected
+                          ? 'bg-primary-700 text-white'
+                          : 'bg-surface-panel text-ink-muted',
+                      )}
+                    >
+                      {cat.productCount}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tombol Geser Kanan */}
+          <button
+            type="button"
+            onClick={() => scrollCategories('right')}
+            aria-label="Geser kategori ke kanan"
+            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-surface-panel text-ink-muted hover:bg-surface-muted hover:text-ink-primary sm:flex"
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
-      {/* 3. Grid Produk */}
+      {/* 3. Grid Produk (Scrollable) */}
       <div className="flex-1 overflow-y-auto p-3">
         {isLoading ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-ink-muted">
@@ -160,87 +198,14 @@ export function PosProductSection({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {products.map((product) => {
-              const price =
-                product.productType === 'WEIGHT'
-                  ? Number(product.pricePerKg ?? 0)
-                  : Number(product.pricePerUnit ?? 0);
-
-              const stock = Number(product.stockQty ?? 0);
-              const minAlert = product.minStockAlert ? Number(product.minStockAlert) : 0;
-              const isOutOfStock = stock <= 0;
-              const isLowStock = !isOutOfStock && minAlert > 0 && stock <= minAlert;
-
-              return (
-                <button
-                  key={product.id}
-                  type="button"
-                  disabled={isOutOfStock}
-                  onClick={() => onSelectProduct(product)}
-                  className={cn(
-                    'group relative flex flex-col justify-between rounded-xl border p-3 text-left transition-all focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
-                    isOutOfStock
-                      ? 'cursor-not-allowed border-border-subtle bg-surface-muted/50 opacity-60'
-                      : 'border-border-subtle bg-surface-panel shadow-sm hover:border-primary-500 hover:shadow-md active:scale-[0.98]',
-                  )}
-                >
-                  <div>
-                    {/* Header Card: Badges */}
-                    <div className="flex items-center justify-between gap-1 mb-2">
-                      <span
-                        className={cn(
-                          'rounded px-1.5 py-0.5 text-xs font-bold tracking-wide uppercase',
-                          product.productType === 'WEIGHT'
-                            ? 'bg-primary-50 text-primary-700 border border-primary-200'
-                            : 'bg-blue-50 text-blue-700 border border-blue-200',
-                        )}
-                      >
-                        {product.productType === 'WEIGHT' ? 'Timbang (kg)' : 'Satuan (pcs)'}
-                      </span>
-
-                      {isOutOfStock ? (
-                        <span className="flex items-center gap-0.5 text-xs font-semibold text-semantic-danger-ink">
-                          <AlertCircle className="h-3 w-3" aria-hidden="true" />
-                          <span>Habis</span>
-                        </span>
-                      ) : isLowStock ? (
-                        <span className="flex items-center gap-0.5 text-xs font-semibold text-semantic-warning-ink">
-                          <span>Sisa {formatQuantity(stock, product.productType)}</span>
-                        </span>
-                      ) : (
-                        <span className="text-xs font-medium text-ink-muted">
-                          {formatQuantity(stock, product.productType)}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Nama Produk */}
-                    <p className="line-clamp-2 text-xs font-bold leading-snug text-ink-primary group-hover:text-primary-700">
-                      {product.name}
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-ink-muted">
-                      {product.category?.name ?? 'Kategori'}
-                    </p>
-                  </div>
-
-                  {/* Harga & Aksi Beli */}
-                  <div className="mt-3 flex items-baseline justify-between border-t border-border-subtle pt-2">
-                    <div>
-                      <span className="text-xs font-extrabold text-primary-700 sm:text-sm">
-                        {formatRupiah(price)}
-                      </span>
-                      <span className="text-xs text-ink-muted">
-                        /{product.productType === 'WEIGHT' ? 'kg' : 'pcs'}
-                      </span>
-                    </div>
-
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-50 text-primary-600 group-hover:bg-primary-600 group-hover:text-white transition-colors">
-                      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+            {products.map((product) => (
+              <PosProductCard
+                key={product.id}
+                product={product}
+                onSelect={onSelectProduct}
+                searchQuery={searchQuery}
+              />
+            ))}
           </div>
         )}
       </div>

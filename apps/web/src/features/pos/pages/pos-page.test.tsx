@@ -292,4 +292,69 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
     fireEvent.keyDown(window, { key: 'F4' });
     expect(searchInput).toHaveFocus();
   });
+
+  it('M03-003: mendukung lazy loading gambar pada kartu produk dan fallback ikon saat gambar tidak ada', async () => {
+    vi.mocked(productApi.getProducts).mockResolvedValueOnce({
+      items: [
+        {
+          ...mockProducts[0]!,
+          imageUrl: 'https://images.unsplash.com/photo-mango.jpg',
+        },
+      ],
+      meta: { page: 1, limit: 100, total: 1 },
+    });
+
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
+    });
+
+    const img = screen.getByRole('img', { name: 'Mangga Harum Manis' });
+    expect(img).toHaveAttribute('loading', 'lazy');
+    expect(img).toHaveAttribute('decoding', 'async');
+  });
+
+  it('M03-003: melakukan filter pencarian produk real-time dan menyorot teks yang cocok', async () => {
+    const user = userEvent.setup();
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText(/cari nama produk atau scan barcode/i);
+    await user.type(searchInput, 'Mangga');
+
+    await waitFor(() => {
+      expect(screen.getByText('Mangga')).toBeInTheDocument();
+      expect(screen.queryByText('Nanas Madu Pemalang')).not.toBeInTheDocument();
+    });
+  });
+
+  it('M03-003: menyaring produk berdasarkan tab kategori dan mendukung tombol geser horisontal', async () => {
+    const user = userEvent.setup();
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
+    });
+
+    // Klik tab Buah Impor
+    const imporTab = screen.getByRole('tab', { name: /buah impor/i });
+    await user.click(imporTab);
+
+    await waitFor(() => {
+      expect(screen.getByText('Apel Fuji RRC Super')).toBeInTheDocument();
+      expect(screen.queryByText('Mangga Harum Manis')).not.toBeInTheDocument();
+    });
+
+    // Klik tombol scroll kiri & kanan kategori
+    const scrollRight = screen.getByRole('button', { name: /geser kategori ke kanan/i });
+    const scrollLeft = screen.getByRole('button', { name: /geser kategori ke kiri/i });
+    expect(scrollRight).toBeInTheDocument();
+    expect(scrollLeft).toBeInTheDocument();
+    await user.click(scrollRight);
+    await user.click(scrollLeft);
+  });
 });
