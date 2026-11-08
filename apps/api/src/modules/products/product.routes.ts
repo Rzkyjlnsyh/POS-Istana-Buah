@@ -5,6 +5,7 @@ import { asyncHandler } from '../../utils/async-handler';
 import { ProductController } from './product.controller';
 import {
   addProductBarcodeSchema,
+  batchImportProductsSchema,
   createProductSchema,
   generateBarcodeQuerySchema,
   productBarcodeIdParamSchema,
@@ -43,6 +44,12 @@ export function createProductRouter(deps: ProductRouterDependencies): Router {
     '/barcode/:barcode',
     validateParams(productBarcodeParamSchema),
     asyncHandler(controller.getByBarcode),
+  );
+  router.post(
+    '/batch-import',
+    canWrite,
+    validateBody(batchImportProductsSchema),
+    asyncHandler(controller.batchImport),
   );
   router.get('/', validateQuery(productListQuerySchema), asyncHandler(controller.list));
   router.get('/:id', validateParams(productIdParamSchema), asyncHandler(controller.getById));

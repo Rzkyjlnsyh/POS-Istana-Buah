@@ -99,7 +99,7 @@ describe('API scaffold & health check', () => {
   it('body melebihi batas -> 413 PAYLOAD_TOO_LARGE', async () => {
     const res = await request(app)
       .post('/health')
-      .send({ blob: 'x'.repeat(5000) });
+      .send({ blob: 'x'.repeat(1_100_000) });
     expect(res.status).toBe(413);
     expect(res.body.error.code).toBe('PAYLOAD_TOO_LARGE');
   });

@@ -379,4 +379,92 @@ describe('M02-002 Integration: Product CRUD, Barcode Lookup, RBAC & NFR-SEC-09',
       expect(exists).toBe(false);
     });
   });
+
+  describe('M02-007 Integration: Batch Import Products (100+ items, CSV/Excel backend)', () => {
+    it('menolak CASHIER dari endpoint POST /v1/products/batch-import dengan status 403', async () => {
+      const res = await request(app)
+        .post('/v1/products/batch-import')
+        .set(auth('CASHIER'))
+        .send({
+          items: [
+            {
+              name: 'Semangka Kuning',
+              categoryName: 'Buah Lokal',
+              productType: 'WEIGHT',
+              price: 18000,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe(ERROR_CODES.FORBIDDEN);
+    });
+
+    it('berhasil mengimpor 105 produk dalam satu batch (AC: 100+ produk terimport)', async () => {
+      const items = Array.from({ length: 105 }, (_, i) => ({
+        name: `Batch Buah Import Nomor ${String(i + 1).padStart(3, '0')}`,
+        categoryName: i % 2 === 0 ? 'Buah Batch Genap' : 'Buah Batch Ganjil',
+        productType: i % 2 === 0 ? ('WEIGHT' as const) : ('UNIT' as const),
+        price: 15000 + i * 100,
+        cost: 10000 + i * 50,
+        stockQty: 50 + (i % 10),
+        minStockAlert: 10,
+        description: `Deskripsi batch test ${i + 1}`,
+      }));
+
+      const res = await request(app)
+        .post('/v1/products/batch-import')
+        .set(auth('MANAGER'))
+        .send({ items });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.totalProcessed).toBe(105);
+      expect(res.body.data.importedCount).toBe(105);
+      expect(res.body.data.failedCount).toBe(0);
+      expect(res.body.data.createdProductIds).toHaveLength(105);
+
+      // Verifikasi di DB bahwa produk dan barcode benar-benar tersimpan
+      const firstCreatedId = res.body.data.createdProductIds[0];
+      const prodInDb = await prismaClient.product.findUnique({
+        where: { id: firstCreatedId },
+        include: { barcodes: true, category: true },
+      });
+      expect(prodInDb).not.toBeNull();
+      expect(prodInDb?.barcodes.length).toBeGreaterThanOrEqual(1);
+      expect(prodInDb?.category.name).toBe('Buah Batch Genap');
+    });
+
+    it('mendeteksi barcode duplikat di dalam batch request dan mengembalikan rincian error', async () => {
+      const duplicateBarcode = '8999999999991';
+      const items = [
+        {
+          name: 'Apel Batch A',
+          categoryName: 'Buah Batch',
+          productType: 'UNIT' as const,
+          price: 20000,
+          barcode: duplicateBarcode,
+        },
+        {
+          name: 'Apel Batch B',
+          categoryName: 'Buah Batch',
+          productType: 'UNIT' as const,
+          price: 22000,
+          barcode: duplicateBarcode, // Duplikat
+        },
+      ];
+
+      const res = await request(app)
+        .post('/v1/products/batch-import')
+        .set(auth('OWNER'))
+        .send({ items });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.failedCount).toBeGreaterThan(0);
+      expect(res.body.data.importedCount).toBe(0);
+      expect(
+        res.body.data.errors.some((e: { message: string }) => e.message.includes('duplikat')),
+      ).toBe(true);
+    });
+  });
 });

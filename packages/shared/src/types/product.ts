@@ -41,3 +41,33 @@ export interface ProductDto {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface BatchImportProductItem {
+  name: string;
+  categoryName: string;
+  productType: ProductType;
+  price: number;
+  cost?: number | null;
+  stockQty?: number | null;
+  minStockAlert?: number | null;
+  barcode?: string | null;
+  description?: string | null;
+}
+
+export interface BatchImportProductsInput {
+  items: BatchImportProductItem[];
+}
+
+export interface BatchImportRowError {
+  row: number;
+  name?: string;
+  message: string;
+}
+
+export interface BatchImportProductResult {
+  totalProcessed: number;
+  importedCount: number;
+  failedCount: number;
+  errors: BatchImportRowError[];
+  createdProductIds: string[];
+}

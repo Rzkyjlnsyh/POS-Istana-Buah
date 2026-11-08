@@ -188,3 +188,25 @@ export const productListQuerySchema = paginationQuerySchema.extend({
 });
 
 export type ProductListQuery = z.infer<typeof productListQuerySchema>;
+
+export const batchImportProductItemSchema = z.object({
+  name: productNameSchema,
+  categoryName: z.string().trim().min(1, 'Nama kategori wajib diisi').max(100),
+  productType: z.enum(PRODUCT_TYPES),
+  price: z.number().positive('Harga jual harus lebih besar dari 0'),
+  cost: z.number().min(0, 'HPP tidak boleh negatif').nullish(),
+  stockQty: z.number().min(0, 'Stok tidak boleh negatif').nullish(),
+  minStockAlert: z.number().min(0, 'Peringatan stok minimum tidak boleh negatif').nullish(),
+  barcode: barcodeStringSchema.nullish(),
+  description: productDescriptionSchema.nullish(),
+});
+
+export const batchImportProductsSchema = z.object({
+  items: z
+    .array(batchImportProductItemSchema)
+    .min(1, 'Minimal satu baris produk untuk diimpor')
+    .max(500, 'Maksimal 500 produk per satu kali impor batch'),
+});
+
+export type BatchImportProductItemInput = z.infer<typeof batchImportProductItemSchema>;
+export type BatchImportProductsSchemaInput = z.infer<typeof batchImportProductsSchema>;

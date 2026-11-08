@@ -1,5 +1,7 @@
 import type {
   ApiSuccess,
+  BatchImportProductItem,
+  BatchImportProductResult,
   CreateProductInput,
   GenerateBarcodeResult,
   PaginationMeta,
@@ -119,4 +121,17 @@ export async function generateProductBarcode(prefix?: string): Promise<string> {
     { params: queryParams },
   );
   return response.data.data.barcode;
+}
+
+/**
+ * Mengimpor produk massal melalui batch endpoint (M02-007).
+ */
+export async function batchImportProducts(
+  items: BatchImportProductItem[],
+): Promise<BatchImportProductResult> {
+  const response = await apiClient.post<ApiSuccess<BatchImportProductResult>>(
+    '/products/batch-import',
+    { items },
+  );
+  return response.data.data;
 }

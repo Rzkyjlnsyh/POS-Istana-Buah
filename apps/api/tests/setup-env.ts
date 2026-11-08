@@ -26,7 +26,7 @@ Object.assign(process.env, {
   APP_NAME: 'Istana Buah Test',
   APP_VERSION: '0.0.0-test',
   DEFAULT_TIMEZONE: 'Asia/Jakarta',
-  JSON_BODY_LIMIT: '1kb',
+  JSON_BODY_LIMIT: '1mb',
   DATABASE_URL: 'postgresql://test:test@127.0.0.1:54339/istanabuah_unit?schema=public',
   DB_POOL_LIMIT: '10',
   REDIS_URL: 'redis://127.0.0.1:63809',

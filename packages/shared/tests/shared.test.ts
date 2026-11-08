@@ -6,18 +6,23 @@ import {
   PRODUCT_TYPES,
   USER_ROLES,
   addProductBarcodeSchema,
+  batchImportProductItemSchema,
+  batchImportProductsSchema,
   calculateEan13CheckDigit,
   encodeBarcodePattern,
   encodeCode39Pattern,
   encodeEan13Pattern,
+  escapeCsvCell,
   categoryListQuerySchema,
   changePasswordSchema,
   createProductSchema,
   generateBarcodeQuerySchema,
+  generateProductCsvTemplate,
   isValidEan13,
   loginSchema,
   logoutSchema,
   paginationQuerySchema,
+  parseCsv,
   productListQuerySchema,
   refreshTokenSchema,
   updateProductSchema,
@@ -304,5 +309,100 @@ describe('Product & Barcode Validators (M02-002 & M02-003)', () => {
     expect(addProductBarcodeSchema.safeParse({ barcode: 'ABC-123_45' }).success).toBe(true);
     expect(addProductBarcodeSchema.safeParse({ barcode: 'ab' }).success).toBe(false); // terlalu pendek (<3)
     expect(addProductBarcodeSchema.safeParse({ barcode: 'abc@123' }).success).toBe(false); // karakter terlarang
+  });
+});
+
+describe('CSV Parser, Serializer, and Product Template (M02-007)', () => {
+  it('parseCsv membaca CSV dengan header dan whitespace dengan benar', () => {
+    const csvContent = `name,categoryName,productType,price,cost\nApel Malang,Buah Lokal,WEIGHT,25000,18000\nJeruk Bali,Buah Lokal,UNIT,35000,28000`;
+    const rows = parseCsv(csvContent);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.rowNumber).toBe(2);
+    expect(rows[0]?.data.name).toBe('Apel Malang');
+    expect(rows[0]?.data.categoryname).toBe('Buah Lokal');
+    expect(rows[0]?.data.producttype).toBe('WEIGHT');
+    expect(rows[0]?.data.price).toBe('25000');
+    expect(rows[1]?.data.name).toBe('Jeruk Bali');
+  });
+
+  it('parseCsv mendukung quoted string dan escaped double quotes', () => {
+    const csvContent = `"name","categoryName","productType","description"\n"Mangga ""Super"" Probolinggo","Buah Lokal","WEIGHT","Segar, manis, dan berair"`;
+    const rows = parseCsv(csvContent);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.data.name).toBe('Mangga "Super" Probolinggo');
+    expect(rows[0]?.data.description).toBe('Segar, manis, dan berair');
+  });
+
+  it('parseCsv mengembalikan array kosong saat CSV kosong atau hanya header', () => {
+    expect(parseCsv('')).toEqual([]);
+    expect(parseCsv('   \n  \r\n ')).toEqual([]);
+    expect(parseCsv('name,categoryName,productType')).toEqual([]);
+  });
+
+  it('escapeCsvCell meng-escape koma, kutip dua, dan baris baru', () => {
+    expect(escapeCsvCell('Normal')).toBe('Normal');
+    expect(escapeCsvCell(null)).toBe('');
+    expect(escapeCsvCell(undefined)).toBe('');
+    expect(escapeCsvCell('Apple, Banana')).toBe('"Apple, Banana"');
+    expect(escapeCsvCell('Say "Hello"')).toBe('"Say ""Hello"""');
+    expect(escapeCsvCell('Line1\nLine2')).toBe('"Line1\nLine2"');
+  });
+
+  it('generateProductCsvTemplate menghasilkan template CSV valid yang dapat di-parse kembali', () => {
+    const template = generateProductCsvTemplate();
+    expect(template).toContain('name,categoryName,productType,price');
+    const parsed = parseCsv(template);
+    expect(parsed.length).toBeGreaterThanOrEqual(4);
+    expect(parsed[0]?.data.name).toBe('Mangga Harum Manis Super');
+    expect(parsed[0]?.data.producttype).toBe('WEIGHT');
+  });
+});
+
+describe('Batch Import Product Validators (M02-007)', () => {
+  it('batchImportProductItemSchema memvalidasi data baris produk', () => {
+    const validWeightItem = {
+      name: 'Salak Pondoh Sleman',
+      categoryName: 'Buah Lokal',
+      productType: 'WEIGHT',
+      price: 15000,
+      cost: 10000,
+      stockQty: 50,
+      minStockAlert: 5,
+      barcode: '8991234567891',
+      description: 'Salak manis renyah',
+    };
+    expect(batchImportProductItemSchema.safeParse(validWeightItem).success).toBe(true);
+
+    const invalidPriceItem = {
+      ...validWeightItem,
+      price: -500, // harus positif
+    };
+    expect(batchImportProductItemSchema.safeParse(invalidPriceItem).success).toBe(false);
+
+    const missingCategoryItem = {
+      ...validWeightItem,
+      categoryName: '',
+    };
+    expect(batchImportProductItemSchema.safeParse(missingCategoryItem).success).toBe(false);
+  });
+
+  it('batchImportProductsSchema memvalidasi batasan ukuran batch (1 hingga 500)', () => {
+    expect(batchImportProductsSchema.safeParse({ items: [] }).success).toBe(false);
+
+    const singleItem = {
+      name: 'Semangka Non Biji',
+      categoryName: 'Buah Lokal',
+      productType: 'WEIGHT' as const,
+      price: 10000,
+    };
+    expect(batchImportProductsSchema.safeParse({ items: [singleItem] }).success).toBe(true);
+
+    const overLimit = Array.from({ length: 501 }, (_, i) => ({
+      name: `Produk ${i}`,
+      categoryName: 'Buah Lokal',
+      productType: 'UNIT' as const,
+      price: 10000,
+    }));
+    expect(batchImportProductsSchema.safeParse({ items: overLimit }).success).toBe(false);
   });
 });
