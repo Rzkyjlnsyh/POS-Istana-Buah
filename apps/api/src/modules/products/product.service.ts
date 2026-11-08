@@ -14,6 +14,9 @@ import { recordAuditLog } from '../../utils/audit-logger';
 import { CATEGORY_CACHE_NAMESPACE } from '../categories/category.service';
 import type {
   AddProductBarcode,
+  BatchImportProductResult,
+  BatchImportProductsInput,
+  BatchImportRowError,
   CreateProductInput,
   GenerateBarcodeResult,
   ProductActorContext,
@@ -956,6 +959,199 @@ export class ProductService {
       id: updated.id,
       barcode: updated.barcode,
       isPrimary: updated.isPrimary,
+    };
+  }
+
+  /**
+   * Impor produk massal via CSV/Excel (M02-007).
+   * Mampu memproses 100+ produk secara atomik dalam transaksi atau melaporkan status per baris:
+   * - Menemukan atau membuat kategori berdasarkan categoryName
+   * - Memvalidasi barcode unik (baik antar baris maupun terhadap DB)
+   * - Menghasilkan EAN-13 GS1 otomatis bila barcode tidak diisi
+   * - Menyimpan produk dan barcode primer
+   * - Menginvaliasi Redis cache produk dan kategori
+   * - Menghasilkan audit log sistem
+   */
+  async batchImport(
+    input: BatchImportProductsInput,
+    actor: ProductActorContext,
+  ): Promise<BatchImportProductResult> {
+    const errors: BatchImportRowError[] = [];
+    const candidateBarcodes: string[] = [];
+    const usedBarcodesInBatch = new Set<string>();
+
+    // 1. Validasi barcode duplikat di dalam batch request itu sendiri
+    input.items.forEach((item, idx) => {
+      const rowNum = idx + 2; // header adalah baris 1
+      if (item.barcode && item.barcode.trim().length > 0) {
+        const bc = item.barcode.trim();
+        if (usedBarcodesInBatch.has(bc)) {
+          errors.push({
+            row: rowNum,
+            name: item.name,
+            message: `Barcode "${bc}" duplikat di dalam data impor`,
+          });
+        } else {
+          usedBarcodesInBatch.add(bc);
+          candidateBarcodes.push(bc);
+        }
+      }
+    });
+
+    // 2. Periksa apakah ada barcode yang sudah digunakan di DB
+    if (candidateBarcodes.length > 0) {
+      const existingDbBarcodes = await this.prisma.barcode.findMany({
+        where: { barcode: { in: candidateBarcodes } },
+        select: { barcode: true },
+      });
+      const dbBarcodeSet = new Set((existingDbBarcodes ?? []).map((b) => b.barcode));
+
+      input.items.forEach((item, idx) => {
+        const rowNum = idx + 2;
+        if (item.barcode && dbBarcodeSet.has(item.barcode.trim())) {
+          errors.push({
+            row: rowNum,
+            name: item.name,
+            message: `Barcode "${item.barcode}" sudah digunakan oleh produk lain di database`,
+          });
+        }
+      });
+    }
+
+    // Jika ada error validasi barcode, kembalikan status error per baris tanpa mengubah DB
+    if (errors.length > 0) {
+      return {
+        totalProcessed: input.items.length,
+        importedCount: 0,
+        failedCount: errors.length,
+        errors,
+        createdProductIds: [],
+      };
+    }
+
+    // 3. Proses kategori: muat kategori yang ada
+    const existingCategories = await this.prisma.category.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+    });
+    const categoryMap = new Map<string, string>();
+    existingCategories.forEach((cat) => {
+      categoryMap.set(cat.name.toLowerCase().trim(), cat.id);
+    });
+
+    // 4. Eksekusi penyimpanan dalam $transaction atomik
+    const createdProductIds: string[] = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      // Siapkan kategori baru jika ada yang belum terdaftar
+      for (const item of input.items) {
+        const normalizedCatName = item.categoryName.toLowerCase().trim();
+        if (!categoryMap.has(normalizedCatName)) {
+          const newCat = await tx.category.create({
+            data: {
+              name: item.categoryName.trim(),
+              description: `Kategori ${item.categoryName.trim()} dibuat otomatis saat impor produk`,
+              isActive: true,
+            },
+          });
+          categoryMap.set(normalizedCatName, newCat.id);
+        }
+      }
+
+      // Simpan setiap produk
+      for (const item of input.items) {
+        const categoryId = categoryMap.get(item.categoryName.toLowerCase().trim())!;
+
+        let barcodeValue = item.barcode?.trim();
+        if (!barcodeValue) {
+          // Auto generate GS1 Modulo-10 barcode
+          let candidate = DEFAULT_IN_STORE_BARCODE_PREFIX;
+          for (let d = 0; d < 9; d++) {
+            candidate += String(randomInt(0, 10));
+          }
+          const checkDigit = calculateEan13CheckDigit(candidate);
+          barcodeValue = `${candidate}${String(checkDigit)}`;
+        }
+
+        const isWeight = item.productType === 'WEIGHT';
+        const priceDecimal = new Prisma.Decimal(item.price);
+        const costDecimal =
+          item.cost !== undefined && item.cost !== null ? new Prisma.Decimal(item.cost) : null;
+        const stockDecimal =
+          item.stockQty !== undefined && item.stockQty !== null
+            ? new Prisma.Decimal(item.stockQty)
+            : new Prisma.Decimal(0);
+        const minAlertDecimal =
+          item.minStockAlert !== undefined && item.minStockAlert !== null
+            ? new Prisma.Decimal(item.minStockAlert)
+            : new Prisma.Decimal(10);
+
+        const product = await tx.product.create({
+          data: {
+            name: item.name,
+            categoryId,
+            description: item.description ?? null,
+            productType: item.productType,
+            pricePerKg: isWeight ? priceDecimal : null,
+            pricePerUnit: !isWeight ? priceDecimal : null,
+            costPerKg: isWeight ? costDecimal : null,
+            costPerUnit: !isWeight ? costDecimal : null,
+            stockQty: stockDecimal,
+            minStockAlert: minAlertDecimal,
+            isActive: true,
+            barcodes: {
+              create: [
+                {
+                  barcode: barcodeValue,
+                  isPrimary: true,
+                },
+              ],
+            },
+          },
+        });
+
+        // Catat riwayat harga awal
+        await tx.priceHistory.create({
+          data: {
+            productId: product.id,
+            oldPrice: new Prisma.Decimal(0),
+            newPrice: priceDecimal,
+            priceType: isWeight ? 'WEIGHT' : 'UNIT',
+            changedBy: actor.userId,
+            reason: 'Impor awal produk massal',
+          },
+        });
+
+        createdProductIds.push(product.id);
+      }
+
+      // Catat log audit aktivitas impor massal
+      await recordAuditLog(tx, {
+        userId: actor.userId,
+        action: 'PRODUCT_BATCH_IMPORT',
+        entity: PRODUCT_ENTITY,
+        entityId: createdProductIds[0] ?? 'batch',
+        newValues: {
+          importedCount: createdProductIds.length,
+          itemNames: input.items.slice(0, 5).map((it) => it.name),
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+    });
+
+    // 5. Invalidate Redis Caches
+    await Promise.all([
+      this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
+      this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
+    ]);
+
+    return {
+      totalProcessed: input.items.length,
+      importedCount: createdProductIds.length,
+      failedCount: 0,
+      errors: [],
+      createdProductIds,
     };
   }
 }

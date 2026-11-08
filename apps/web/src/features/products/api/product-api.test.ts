@@ -2,6 +2,7 @@ import type { ProductDto } from '@istana-buah/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../../lib/api/http-client';
 import {
+  batchImportProducts,
   createProduct,
   deleteProduct,
   generateProductBarcode,
@@ -215,6 +216,45 @@ describe('product-api', () => {
         params: { prefix: '20' },
       });
       expect(barcode).toBe('2001234567890');
+    });
+  });
+
+  describe('batchImportProducts', () => {
+    it('memanggil POST /products/batch-import dengan payload array produk', async () => {
+      const mockResult = {
+        totalProcessed: 2,
+        importedCount: 2,
+        failedCount: 0,
+        errors: [],
+        createdProductIds: ['p-1', 'p-2'],
+      };
+
+      vi.mocked(apiClient.post).mockResolvedValueOnce({
+        data: {
+          success: true,
+          data: mockResult,
+        },
+      });
+
+      const items = [
+        {
+          name: 'Melon Super',
+          categoryName: 'Buah Lokal',
+          productType: 'WEIGHT' as const,
+          price: 25000,
+        },
+        {
+          name: 'Kelapa Hijau',
+          categoryName: 'Buah Lokal',
+          productType: 'UNIT' as const,
+          price: 15000,
+        },
+      ];
+
+      const result = await batchImportProducts(items);
+      expect(apiClient.post).toHaveBeenCalledWith('/products/batch-import', { items });
+      expect(result.importedCount).toBe(2);
+      expect(result.createdProductIds).toEqual(['p-1', 'p-2']);
     });
   });
 });

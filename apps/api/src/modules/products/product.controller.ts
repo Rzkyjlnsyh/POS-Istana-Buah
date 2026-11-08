@@ -4,6 +4,7 @@ import { AppError } from '../../utils/app-error';
 import { extractClientMeta } from '../../utils/request-meta';
 import type {
   AddProductBarcode,
+  BatchImportProductsInput,
   CreateProductInput,
   GenerateBarcodeQuery,
   ProductActorContext,
@@ -113,5 +114,17 @@ export class ProductController {
     const { id, barcodeId } = req.params as unknown as ProductBarcodeIdParam;
     const data = await this.productService.setPrimaryBarcode(id, barcodeId, buildActor(req));
     res.status(200).json({ success: true, data, message: 'Barcode utama berhasil diperbarui' });
+  };
+
+  batchImport = async (req: Request, res: Response): Promise<void> => {
+    const data = await this.productService.batchImport(
+      req.body as BatchImportProductsInput,
+      buildActor(req),
+    );
+    res.status(200).json({
+      success: true,
+      data,
+      message: `Impor selesai: ${String(data.importedCount)} berhasil, ${String(data.failedCount)} gagal`,
+    });
   };
 }

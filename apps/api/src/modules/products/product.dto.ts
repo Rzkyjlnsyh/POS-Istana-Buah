@@ -1,6 +1,10 @@
 import type {
   AddProductBarcode,
   AddProductBarcodeDto,
+  BatchImportProductItem,
+  BatchImportProductResult,
+  BatchImportProductsInput,
+  BatchImportRowError,
   CreateProductInput,
   GenerateBarcodeQuery,
   GenerateBarcodeResult,
@@ -17,6 +21,8 @@ import type {
 
 export {
   addProductBarcodeSchema,
+  batchImportProductItemSchema,
+  batchImportProductsSchema,
   createProductSchema,
   generateBarcodeQuerySchema,
   productBarcodeIdParamSchema,
@@ -29,6 +35,10 @@ export {
 export type {
   AddProductBarcode,
   AddProductBarcodeDto,
+  BatchImportProductItem,
+  BatchImportProductResult,
+  BatchImportProductsInput,
+  BatchImportRowError,
   CreateProductInput,
   GenerateBarcodeQuery,
   GenerateBarcodeResult,

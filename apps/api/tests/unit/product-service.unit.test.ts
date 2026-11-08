@@ -801,4 +801,117 @@ describe('M02-002 Unit: ProductService', () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
+
+  describe('M02-007 Unit: ProductService.batchImport', () => {
+    it('mengembalikan error per baris jika ada barcode duplikat di dalam batch', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        barcode: { findMany: jest.fn().mockResolvedValue([]) },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      const result = await service.batchImport(
+        {
+          items: [
+            {
+              name: 'Mangga A',
+              categoryName: 'Lokal',
+              productType: 'WEIGHT',
+              price: 25000,
+              barcode: '8991234567891',
+            },
+            {
+              name: 'Mangga B',
+              categoryName: 'Lokal',
+              productType: 'WEIGHT',
+              price: 26000,
+              barcode: '8991234567891', // Duplikat
+            },
+          ],
+        },
+        managerActor,
+      );
+
+      expect(result.failedCount).toBe(1);
+      expect(result.importedCount).toBe(0);
+      expect(result.errors[0]?.row).toBe(3);
+      expect(result.errors[0]?.message).toContain('duplikat');
+    });
+
+    it('mengembalikan error jika barcode sudah terdaftar di database', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        barcode: {
+          findMany: jest.fn().mockResolvedValue([{ barcode: '8991234567891' }]),
+        },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      const result = await service.batchImport(
+        {
+          items: [
+            {
+              name: 'Mangga Unik',
+              categoryName: 'Lokal',
+              productType: 'WEIGHT',
+              price: 25000,
+              barcode: '8991234567891',
+            },
+          ],
+        },
+        managerActor,
+      );
+
+      expect(result.failedCount).toBe(1);
+      expect(result.importedCount).toBe(0);
+      expect(result.errors[0]?.message).toContain('sudah digunakan');
+    });
+
+    it('berhasil mengimpor produk, membuat kategori baru, dan membuat barcode otomatis', async () => {
+      const cache = new InMemoryCacheStore();
+      const txMock = {
+        category: {
+          create: jest.fn().mockResolvedValue({ id: 'cat-new-1', name: 'Kategori Anyar' }),
+        },
+        product: {
+          create: jest.fn().mockResolvedValue({ id: 'prod-imported-1' }),
+        },
+        priceHistory: { create: jest.fn() },
+        auditLog: { create: jest.fn() },
+      };
+
+      const prisma = {
+        barcode: { findMany: jest.fn().mockResolvedValue([]) },
+        category: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        $transaction: jest.fn().mockImplementation(async (cb) => cb(txMock)),
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      const result = await service.batchImport(
+        {
+          items: [
+            {
+              name: 'Pepaya California',
+              categoryName: 'Kategori Anyar',
+              productType: 'WEIGHT',
+              price: 12000,
+              cost: 8000,
+              stockQty: 30,
+              minStockAlert: 5,
+            },
+          ],
+        },
+        managerActor,
+      );
+
+      expect(result.importedCount).toBe(1);
+      expect(result.failedCount).toBe(0);
+      expect(result.createdProductIds).toEqual(['prod-imported-1']);
+      expect(txMock.category.create).toHaveBeenCalled();
+      expect(txMock.product.create).toHaveBeenCalled();
+      expect(txMock.priceHistory.create).toHaveBeenCalled();
+    });
+  });
 });

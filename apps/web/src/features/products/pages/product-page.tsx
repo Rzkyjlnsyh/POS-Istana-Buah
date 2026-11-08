@@ -14,6 +14,7 @@ import {
   Scale,
   Search,
   Trash2,
+  UploadCloud,
   WifiOff,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,6 +27,7 @@ import { BarcodePrintModal } from '../components/barcode-print-modal';
 import { ProductDeleteModal } from '../components/product-delete-modal';
 import { ProductDetailModal } from '../components/product-detail-modal';
 import { ProductFormModal } from '../components/product-form-modal';
+import { ProductImportModal } from '../components/product-import-modal';
 
 function formatRupiah(amount: string | null): string {
   if (!amount) return '-';
@@ -91,6 +93,7 @@ export function ProductPage() {
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printingProduct, setPrintingProduct] = useState<ProductDto | null>(null);
   const [printingBarcode, setPrintingBarcode] = useState<string | undefined>(undefined);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   // Debounce search input (<300ms)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -278,15 +281,21 @@ export function ProductPage() {
         </div>
 
         {canManage ? (
-          <Button
-            type="button"
-            variant="primary"
-            onClick={handleOpenAdd}
-            className="shrink-0 self-start sm:self-auto"
-          >
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-            Tambah Produk
-          </Button>
+          <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setImportModalOpen(true)}
+              className="shrink-0"
+            >
+              <UploadCloud className="mr-2 h-4 w-4" aria-hidden="true" />
+              Impor CSV
+            </Button>
+            <Button type="button" variant="primary" onClick={handleOpenAdd} className="shrink-0">
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+              Tambah Produk
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -957,6 +966,12 @@ export function ProductPage() {
         onClose={() => setPrintModalOpen(false)}
         product={printingProduct}
         initialBarcode={printingBarcode}
+      />
+
+      <ProductImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onSuccess={() => void fetchProducts(pagination.page)}
       />
     </div>
   );
