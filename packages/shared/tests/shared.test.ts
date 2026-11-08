@@ -7,6 +7,9 @@ import {
   USER_ROLES,
   addProductBarcodeSchema,
   calculateEan13CheckDigit,
+  encodeBarcodePattern,
+  encodeCode39Pattern,
+  encodeEan13Pattern,
   categoryListQuerySchema,
   changePasswordSchema,
   createProductSchema,
@@ -146,6 +149,32 @@ describe('EAN-13 Barcode GS1 Utilities (M02-003)', () => {
     expect(isValidEan13('89912345678910')).toBe(false);
     // Non numerik
     expect(isValidEan13('899123456789A')).toBe(false);
+  });
+
+  it('encodeEan13Pattern menghasilkan tepat 95 modul biner (101 guard, center 01010, right 101)', () => {
+    const pattern = encodeEan13Pattern('8991234567891');
+    expect(pattern).toHaveLength(95);
+    expect(pattern.startsWith('101')).toBe(true); // Left guard
+    expect(pattern.slice(45, 50)).toBe('01010'); // Center guard
+    expect(pattern.endsWith('101')).toBe(true); // Right guard
+    expect(/^[01]+$/.test(pattern)).toBe(true);
+
+    // Menolak barcode bukan 13 digit
+    expect(() => encodeEan13Pattern('12345')).toThrow(/13 digit/);
+  });
+
+  it('encodeCode39Pattern menghasilkan modul biner untuk teks alfanumerik', () => {
+    const pattern = encodeCode39Pattern('APEL-10');
+    expect(pattern.length).toBeGreaterThan(0);
+    expect(/^[01]+$/.test(pattern)).toBe(true);
+  });
+
+  it('encodeBarcodePattern secara cerdas memilih EAN-13 untuk 13 digit dan Code 39 untuk format lain', () => {
+    const eanPattern = encodeBarcodePattern('8991234567891');
+    expect(eanPattern).toHaveLength(95);
+
+    const code39Pattern = encodeBarcodePattern('ITEM-001');
+    expect(code39Pattern).toBe(encodeCode39Pattern('ITEM-001'));
   });
 });
 

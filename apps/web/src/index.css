@@ -143,3 +143,27 @@
     transition-duration: 120ms;
   }
 }
+
+/* Dukungan Cetak Label Thermal Barcode & Struk POS (M02-006 / M03) */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #thermal-print-area,
+  #thermal-print-area * {
+    visibility: visible;
+  }
+  #thermal-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+  }
+  .print-page-break {
+    page-break-after: always;
+    break-after: page;
+  }
+}
