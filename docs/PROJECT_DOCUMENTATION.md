@@ -2076,7 +2076,7 @@ Proyek Istana Buah
 | M02-001 | ✅ DONE | Backend CRUD Kategori (`GET/POST/PUT/DELETE /v1/categories`, `Prisma.$transaction` atomik, audit log, RBAC fail-closed baca semua peran/tulis `MANAGER` & `OWNER`, soft delete dengan pencegahan `CATEGORY_IN_USE`, pemulihan nama kategori terhapus, Redis cache-aside berversi namespace bust-on-write); `pnpm test` exit 0 (11 test suites api, 75 passed, 99.05% coverage), `pnpm build` exit 0 |
 | M02-002 | ✅ DONE | Backend CRUD Produk & Barcode (`GET/POST/PUT/DELETE /v1/products`, `GET /v1/products/barcode/:barcode` <50ms terindeks, validasi tipe produk `WEIGHT` vs `UNIT`, penyembunyian HPP `costPerKg`/`costPerUnit` dari `CASHIER` per NFR-SEC-09, pencatatan otomatis `PriceHistory` pada perubahan harga jual, deteksi duplikasi barcode 409 `DUPLICATE_BARCODE`, Redis cache-aside berversi namespace); `pnpm test` exit 0 (13 test suites api, 102 passed, 98.3% coverage), `pnpm build` exit 0 |
 | M02-003 | ✅ DONE | EAN-13 GS1 Modulus-10 generator, multi-barcode attach, switch primary, auto-promosi, RBAC test lulus (119 BE tests passed, 97.8% coverage, 18 shared tests passed) |
-| M02-004 | ⏳ TODO | - |
+| M02-004 | ✅ DONE | Halaman Manajemen Kategori Produk (`CategoryPage`), CRUD modal form, dialog konfirmasi hapus pencegah `CATEGORY_IN_USE`, filter search & status tab, responsive desktop/mobile, axe-core WCAG 2.1 AA 0 pelanggaran, impeccable detect 0 temuan; 37 web tests passed (coverage 91%), pnpm build exit 0 |
 | M02-005 | ⏳ TODO | - |
 | M02-006 | ⏳ TODO | - |
 | M02-007 | ⏳ TODO | - |

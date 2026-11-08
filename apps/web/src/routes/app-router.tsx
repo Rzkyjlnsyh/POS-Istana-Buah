@@ -6,6 +6,7 @@ import { webConfig } from '../config/app.config';
 import { bootstrapAuthSession } from '../features/auth/api/auth-api';
 import { ChangePasswordPage } from '../features/auth/pages/change-password-page';
 import { LoginPage } from '../features/auth/pages/login-page';
+import { CategoryPage } from '../features/categories/pages/category-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
 import { ROLE_LABELS_ID } from './navigation-config';
 import { RequireAuth, RequireRole } from './protected-route';
@@ -123,10 +124,7 @@ export function AppRoutes() {
             path="/categories"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
-                <ModuleWorkspaceSection
-                  title="Kategori Produk"
-                  description="Atur pengelompokan komoditas buah segar agar pencarian di meja kasir lebih cepat."
-                />
+                <CategoryPage />
               </RequireRole>
             }
           />
