@@ -21,6 +21,7 @@ export interface PosCartSectionProps {
   onPayTransfer: () => void;
   onHoldCart?: () => void;
   onRecallCart?: (heldId: string) => void;
+  onEditItemWeight?: (item: PosCartItem) => void;
 }
 
 export function PosCartSection({
@@ -29,6 +30,7 @@ export function PosCartSection({
   onPayTransfer,
   onHoldCart,
   onRecallCart,
+  onEditItemWeight,
 }: PosCartSectionProps) {
   const items = usePosCartStore((state) => state.items);
   const globalDiscount = usePosCartStore((state) => state.globalDiscount);
@@ -174,9 +176,15 @@ export function PosCartSection({
                       <Minus className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
 
-                    <span className="min-w-[68px] text-center font-mono text-xs font-bold text-ink-primary">
+                    <button
+                      type="button"
+                      onClick={() => onEditItemWeight?.(item)}
+                      aria-label={`Ubah kuantitas atau berat ${item.name}`}
+                      title="Klik untuk ubah kuantitas / input berat dengan numpad"
+                      className="min-w-[68px] rounded px-1 py-0.5 text-center font-mono text-xs font-bold text-ink-primary hover:bg-surface-muted transition-colors cursor-pointer"
+                    >
                       {formatQuantity(item.quantity, item.productType)}
-                    </span>
+                    </button>
 
                     <button
                       type="button"

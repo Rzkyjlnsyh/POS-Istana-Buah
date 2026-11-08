@@ -7,8 +7,9 @@ import { PosCameraScannerModal } from '../components/pos-camera-scanner-modal';
 import { PosCartSection } from '../components/pos-cart-section';
 import { PosProductSection } from '../components/pos-product-section';
 import { PosStatusBar } from '../components/pos-status-bar';
+import { PosWeightModal } from '../components/pos-weight-modal';
 import { useUsbBarcodeScanner } from '../hooks/use-usb-barcode-scanner';
-import { usePosCartStore } from '../stores/pos-cart-store';
+import { type PosCartItem, usePosCartStore } from '../stores/pos-cart-store';
 import { formatRupiah } from '../utils/formatters';
 import { scannerSound } from '../utils/scanner-sound';
 
@@ -20,12 +21,23 @@ export function PosPage() {
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [weightModal, setWeightModal] = useState<{
+    isOpen: boolean;
+    product: ProductDto | null;
+    initialWeight?: number;
+    editingItemId?: string;
+  }>({
+    isOpen: false,
+    product: null,
+    initialWeight: 0,
+  });
   const [scanNotification, setScanNotification] = useState<{
     type: 'success' | 'error';
     message: string;
   } | null>(null);
 
   const addItem = usePosCartStore((state) => state.addItem);
+  const updateQuantity = usePosCartStore((state) => state.updateQuantity);
   const clearCart = usePosCartStore((state) => state.clearCart);
   const items = usePosCartStore((state) => state.items);
   const getTotalAmount = usePosCartStore((state) => state.getTotalAmount);
@@ -84,7 +96,56 @@ export function PosPage() {
 
   // Handlers
   const handleSelectProduct = (product: ProductDto) => {
+    if (product.productType === 'WEIGHT') {
+      setWeightModal({
+        isOpen: true,
+        product,
+        initialWeight: 0,
+      });
+      return;
+    }
     addItem(product);
+  };
+
+  const handleEditItemWeight = (item: PosCartItem) => {
+    const foundProduct = products.find((p) => p.id === item.productId);
+    const productData: ProductDto = foundProduct ?? {
+      id: item.productId,
+      name: item.name,
+      description: null,
+      categoryId: '',
+      category: { id: '', name: 'Umum' },
+      productType: item.productType,
+      pricePerKg: item.productType === 'WEIGHT' ? String(item.unitPrice) : null,
+      pricePerUnit: item.productType === 'UNIT' ? String(item.unitPrice) : null,
+      costPerKg: null,
+      costPerUnit: null,
+      stockQty: String(item.availableStock),
+      minStockAlert: '0',
+      imageUrl: null,
+      isActive: true,
+      barcodes: item.barcode ? [{ id: 'b1', barcode: item.barcode, isPrimary: true }] : [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setWeightModal({
+      isOpen: true,
+      product: productData,
+      initialWeight: item.quantity,
+      editingItemId: item.id,
+    });
+  };
+
+  const handleConfirmWeight = (product: ProductDto, weight: number) => {
+    if (weightModal.editingItemId) {
+      updateQuantity(weightModal.editingItemId, weight);
+      showNotification('success', `Berat ${product.name} diperbarui menjadi ${weight} kg.`);
+    } else {
+      addItem(product, weight);
+      showNotification('success', `${product.name} (${weight} kg) ditambahkan ke keranjang.`);
+    }
+    setWeightModal({ isOpen: false, product: null });
   };
 
   const handleBarcodeScan = useCallback(
@@ -113,6 +174,16 @@ export function PosPage() {
       if (Number(matchedProduct.stockQty) <= 0) {
         scannerSound.playErrorBeep();
         showNotification('error', `Stok ${matchedProduct.name} habis.`);
+        return;
+      }
+
+      if (matchedProduct.productType === 'WEIGHT') {
+        setWeightModal({
+          isOpen: true,
+          product: matchedProduct,
+          initialWeight: 0,
+        });
+        scannerSound.playSuccessBeep();
         return;
       }
 
@@ -264,6 +335,7 @@ export function PosPage() {
             onPayCash={handlePayCash}
             onPayQris={handlePayQris}
             onPayTransfer={handlePayTransfer}
+            onEditItemWeight={handleEditItemWeight}
           />
         </div>
       </div>
@@ -290,6 +362,15 @@ export function PosPage() {
         isOpen={isCameraModalOpen}
         onClose={() => setIsCameraModalOpen(false)}
         onScan={handleBarcodeScan}
+      />
+
+      {/* Modal Input Berat Produk & Numpad (M03-005) */}
+      <PosWeightModal
+        isOpen={weightModal.isOpen}
+        onClose={() => setWeightModal({ isOpen: false, product: null })}
+        product={weightModal.product}
+        initialWeight={weightModal.initialWeight}
+        onConfirm={handleConfirmWeight}
       />
 
       {/* Bottom Status Bar */}
