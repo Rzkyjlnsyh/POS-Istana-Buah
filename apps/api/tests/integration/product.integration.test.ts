@@ -271,4 +271,112 @@ describe('M02-002 Integration: Product CRUD, Barcode Lookup, RBAC & NFR-SEC-09',
     expect(barcodeDeleted.status).toBe(404);
     expect(barcodeDeleted.body.error.code).toBe(ERROR_CODES.PRODUCT_NOT_FOUND);
   });
+
+  describe('M02-003 Barcode Management Integration', () => {
+    let targetProductId: string;
+
+    beforeAll(async () => {
+      // Buat produk baru khusus pengujian barcode
+      const res = await request(app).post('/v1/products').set(auth('MANAGER')).send({
+        name: 'Pisang Cavendish Barcode Test',
+        categoryId: testCategoryId,
+        productType: 'WEIGHT',
+        pricePerKg: 20000,
+        costPerKg: 12000,
+      });
+      targetProductId = res.body.data.id;
+    });
+
+    it('GET /v1/products/generate-barcode mengembalikan barcode EAN-13 valid (CASHIER 403)', async () => {
+      // CASHIER ditolak
+      const cashierRes = await request(app)
+        .get('/v1/products/generate-barcode')
+        .set(auth('CASHIER'));
+      expect(cashierRes.status).toBe(403);
+
+      // MANAGER berhasil
+      const managerRes = await request(app)
+        .get('/v1/products/generate-barcode?prefix=200')
+        .set(auth('MANAGER'));
+      expect(managerRes.status).toBe(200);
+      expect(managerRes.body.data.barcode).toMatch(/^200\d{10}$/);
+      expect(managerRes.body.data.barcode).toHaveLength(13);
+    });
+
+    it('POST /v1/products/:id/barcodes/generate memasang barcode baru ke produk', async () => {
+      const res = await request(app)
+        .post(`/v1/products/${targetProductId}/barcodes/generate`)
+        .set(auth('MANAGER'));
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.barcode).toMatch(/^200\d{10}$/);
+      expect(res.body.data.isPrimary).toBe(true); // Barcode pertama otomatis primary
+    });
+
+    it('POST /v1/products/:id/barcodes mendaftarkan barcode manual sekunder', async () => {
+      const res = await request(app)
+        .post(`/v1/products/${targetProductId}/barcodes`)
+        .set(auth('MANAGER'))
+        .send({ barcode: '8999888777111', isPrimary: false });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.barcode).toBe('8999888777111');
+      expect(res.body.data.isPrimary).toBe(false);
+
+      // Menolak pendaftaran duplikat
+      const dupRes = await request(app)
+        .post(`/v1/products/${targetProductId}/barcodes`)
+        .set(auth('MANAGER'))
+        .send({ barcode: '8999888777111' });
+      expect(dupRes.status).toBe(409);
+      expect(dupRes.body.error.code).toBe(ERROR_CODES.DUPLICATE_BARCODE);
+    });
+
+    it('PATCH /v1/products/:id/barcodes/:barcodeId/primary mengubah barcode primer', async () => {
+      const prodRes = await request(app)
+        .get(`/v1/products/${targetProductId}`)
+        .set(auth('MANAGER'));
+      const secondaryBc = prodRes.body.data.barcodes.find(
+        (b: { isPrimary: boolean }) => !b.isPrimary,
+      );
+      expect(secondaryBc).toBeDefined();
+
+      const patchRes = await request(app)
+        .patch(`/v1/products/${targetProductId}/barcodes/${secondaryBc.id}/primary`)
+        .set(auth('MANAGER'));
+
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.data.isPrimary).toBe(true);
+
+      // Cek produk kembali untuk memastikan barcode lama tidak lagi primer
+      const updatedProd = await request(app)
+        .get(`/v1/products/${targetProductId}`)
+        .set(auth('MANAGER'));
+      const primaryCount = updatedProd.body.data.barcodes.filter(
+        (b: { isPrimary: boolean }) => b.isPrimary,
+      ).length;
+      expect(primaryCount).toBe(1);
+    });
+
+    it('DELETE /v1/products/:id/barcodes/:barcodeId menghapus barcode dari produk', async () => {
+      const prodRes = await request(app)
+        .get(`/v1/products/${targetProductId}`)
+        .set(auth('MANAGER'));
+      const bcToDelete = prodRes.body.data.barcodes[0];
+
+      const delRes = await request(app)
+        .delete(`/v1/products/${targetProductId}/barcodes/${bcToDelete.id}`)
+        .set(auth('MANAGER'));
+      expect(delRes.status).toBe(200);
+
+      // Verifikasi produk tidak lagi memiliki barcode yang dihapus
+      const afterDelProd = await request(app)
+        .get(`/v1/products/${targetProductId}`)
+        .set(auth('MANAGER'));
+      const exists = afterDelProd.body.data.barcodes.some(
+        (b: { id: string }) => b.id === bcToDelete.id,
+      );
+      expect(exists).toBe(false);
+    });
+  });
 });

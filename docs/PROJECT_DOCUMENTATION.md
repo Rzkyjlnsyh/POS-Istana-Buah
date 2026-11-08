@@ -2075,7 +2075,7 @@ Proyek Istana Buah
 | M01-006 | ✅ DONE | Unit `AuthService` terisolasi (user tak ada constant-time, nonaktif, terkunci, reset lockout kadaluarsa, refresh expired/inaktif/race `updateMany=0`, change-password) + test integrasi FE end-to-end (login UI → dashboard → 401 auto-refresh → logout, `bootstrapAuthSession` single-flight); `pnpm test` exit 0 (shared 100%, api 61 passed 98,74%, web 24 passed 93,27%), `pnpm build` exit 0, `pnpm audit --prod` 0 vuln |
 | M02-001 | ✅ DONE | Backend CRUD Kategori (`GET/POST/PUT/DELETE /v1/categories`, `Prisma.$transaction` atomik, audit log, RBAC fail-closed baca semua peran/tulis `MANAGER` & `OWNER`, soft delete dengan pencegahan `CATEGORY_IN_USE`, pemulihan nama kategori terhapus, Redis cache-aside berversi namespace bust-on-write); `pnpm test` exit 0 (11 test suites api, 75 passed, 99.05% coverage), `pnpm build` exit 0 |
 | M02-002 | ✅ DONE | Backend CRUD Produk & Barcode (`GET/POST/PUT/DELETE /v1/products`, `GET /v1/products/barcode/:barcode` <50ms terindeks, validasi tipe produk `WEIGHT` vs `UNIT`, penyembunyian HPP `costPerKg`/`costPerUnit` dari `CASHIER` per NFR-SEC-09, pencatatan otomatis `PriceHistory` pada perubahan harga jual, deteksi duplikasi barcode 409 `DUPLICATE_BARCODE`, Redis cache-aside berversi namespace); `pnpm test` exit 0 (13 test suites api, 102 passed, 98.3% coverage), `pnpm build` exit 0 |
-| M02-003 | ⏳ TODO | - |
+| M02-003 | ✅ DONE | EAN-13 GS1 Modulus-10 generator, multi-barcode attach, switch primary, auto-promosi, RBAC test lulus (119 BE tests passed, 97.8% coverage, 18 shared tests passed) |
 | M02-004 | ⏳ TODO | - |
 | M02-005 | ⏳ TODO | - |
 | M02-006 | ⏳ TODO | - |

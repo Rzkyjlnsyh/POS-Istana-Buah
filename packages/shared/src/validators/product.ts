@@ -144,6 +144,30 @@ export const productBarcodeParamSchema = z.object({
 
 export type ProductBarcodeParam = z.infer<typeof productBarcodeParamSchema>;
 
+export const addProductBarcodeSchema = z.object({
+  barcode: barcodeStringSchema,
+  isPrimary: z.boolean().optional(),
+});
+
+export type AddProductBarcode = z.infer<typeof addProductBarcodeSchema>;
+
+export const productBarcodeIdParamSchema = z.object({
+  id: z.string().uuid('ID produk tidak valid'),
+  barcodeId: z.string().uuid('ID barcode tidak valid'),
+});
+
+export type ProductBarcodeIdParam = z.infer<typeof productBarcodeIdParamSchema>;
+
+export const generateBarcodeQuerySchema = z.object({
+  prefix: z
+    .string()
+    .trim()
+    .regex(/^\d{2,4}$/, 'Prefix barcode harus berupa 2-4 digit angka')
+    .optional(),
+});
+
+export type GenerateBarcodeQuery = z.infer<typeof generateBarcodeQuerySchema>;
+
 export const productListQuerySchema = paginationQuerySchema.extend({
   search: z
     .string()

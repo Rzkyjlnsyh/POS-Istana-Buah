@@ -534,4 +534,271 @@ describe('M02-002 Unit: ProductService', () => {
     const getByBcRes = await service.getByBarcode('899123', 'MANAGER');
     expect(getByBcRes).toEqual(cachedDto);
   });
+
+  describe('M02-003 Barcode Management', () => {
+    it('generateBarcode menghasilkan barcode 13 digit dengan check digit valid', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        barcode: { findUnique: jest.fn().mockResolvedValue(null) },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      const res = await service.generateBarcode('200');
+      expect(res.barcode).toMatch(/^200\d{10}$/);
+      expect(res.barcode).toHaveLength(13);
+    });
+
+    it('generateBarcode menolak prefix invalid (<2 atau >4 digit atau bukan angka)', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        barcode: { findUnique: jest.fn().mockResolvedValue(null) },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      await expect(service.generateBarcode('1')).rejects.toMatchObject({
+        code: ERROR_CODES.VALIDATION_ERROR,
+        statusCode: 400,
+      });
+
+      await expect(service.generateBarcode('abc')).rejects.toMatchObject({
+        code: ERROR_CODES.VALIDATION_ERROR,
+        statusCode: 400,
+      });
+    });
+
+    it('generateBarcode melempar 500 jika terjadi collision hingga batas retry', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        barcode: { findUnique: jest.fn().mockResolvedValue({ id: 'existing' }) },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      await expect(service.generateBarcode('200')).rejects.toMatchObject({
+        code: ERROR_CODES.INTERNAL_ERROR,
+        statusCode: 500,
+      });
+      expect(prisma.barcode.findUnique).toHaveBeenCalledTimes(10);
+    });
+
+    it('generateAndAttachBarcode melempar 404 jika produk tidak ada', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        product: { findFirst: jest.fn().mockResolvedValue(null) },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      await expect(
+        service.generateAndAttachBarcode('non-existent', undefined, undefined, managerActor),
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.PRODUCT_NOT_FOUND,
+        statusCode: 404,
+      });
+    });
+
+    it('generateAndAttachBarcode melempar 400 jika batas maksimal 10 barcode tercapai', async () => {
+      const cache = new InMemoryCacheStore();
+      const tenBarcodes = Array.from({ length: 10 }, (_, i) => ({
+        id: `bc-${i}`,
+        barcode: `200000000000${i}`,
+        isPrimary: i === 0,
+      }));
+      const prisma = {
+        product: {
+          findFirst: jest.fn().mockResolvedValue({ ...mockProductWeight, barcodes: tenBarcodes }),
+        },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      await expect(
+        service.generateAndAttachBarcode('prod-1', undefined, undefined, managerActor),
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.VALIDATION_ERROR,
+        statusCode: 400,
+      });
+    });
+
+    it('generateAndAttachBarcode berhasil membuat dan memasang barcode', async () => {
+      const cache = new InMemoryCacheStore();
+      const txMock = {
+        barcode: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          create: jest
+            .fn()
+            .mockImplementation(({ data }) => Promise.resolve({ id: 'new-bc-id', ...data })),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        product: {
+          findFirst: jest.fn().mockResolvedValue(mockProductWeight),
+        },
+        barcode: {
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+        $transaction: jest.fn().mockImplementation(async (callback) => callback(txMock)),
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      const result = await service.generateAndAttachBarcode('prod-1', '200', true, managerActor);
+      expect(result.id).toBe('new-bc-id');
+      expect(result.isPrimary).toBe(true);
+      expect(txMock.barcode.updateMany).toHaveBeenCalledWith({
+        where: { productId: 'prod-1', isPrimary: true },
+        data: { isPrimary: false },
+      });
+      expect(txMock.barcode.create).toHaveBeenCalled();
+    });
+
+    it('addBarcode melempar 409 jika barcode sudah terdaftar di sistem', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        product: { findFirst: jest.fn().mockResolvedValue(mockProductWeight) },
+        barcode: { findUnique: jest.fn().mockResolvedValue({ id: 'existing-bc' }) },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      await expect(
+        service.addBarcode('prod-1', { barcode: '8991234567890' }, managerActor),
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.DUPLICATE_BARCODE,
+        statusCode: 409,
+      });
+    });
+
+    it('addBarcode berhasil menambahkan barcode baru', async () => {
+      const cache = new InMemoryCacheStore();
+      const txMock = {
+        barcode: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          create: jest
+            .fn()
+            .mockImplementation(({ data }) => Promise.resolve({ id: 'new-bc-2', ...data })),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        product: { findFirst: jest.fn().mockResolvedValue(mockProductWeight) },
+        barcode: { findUnique: jest.fn().mockResolvedValue(null) },
+        $transaction: jest.fn().mockImplementation(async (callback) => callback(txMock)),
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      const result = await service.addBarcode(
+        'prod-1',
+        { barcode: '8999999999999', isPrimary: false },
+        managerActor,
+      );
+      expect(result.id).toBe('new-bc-2');
+      expect(result.barcode).toBe('8999999999999');
+      expect(result.isPrimary).toBe(false);
+    });
+
+    it('removeBarcode melempar 404 jika barcode tidak ditemukan pada produk', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        product: { findFirst: jest.fn().mockResolvedValue(mockProductWeight) },
+        barcode: { findFirst: jest.fn().mockResolvedValue(null) },
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      await expect(
+        service.removeBarcode('prod-1', 'non-existent-bc', managerActor),
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.NOT_FOUND,
+        statusCode: 404,
+      });
+    });
+
+    it('removeBarcode menghapus barcode dan mempromosikan barcode tersisa jika primary dihapus', async () => {
+      const cache = new InMemoryCacheStore();
+      const txMock = {
+        barcode: {
+          delete: jest.fn().mockResolvedValue({}),
+          findFirst: jest.fn().mockResolvedValue({ id: 'bc-remaining', isPrimary: false }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        product: { findFirst: jest.fn().mockResolvedValue(mockProductWeight) },
+        barcode: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ id: 'bc-1', productId: 'prod-1', isPrimary: true }),
+        },
+        $transaction: jest.fn().mockImplementation(async (callback) => callback(txMock)),
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      await service.removeBarcode('prod-1', 'bc-1', managerActor);
+
+      expect(txMock.barcode.delete).toHaveBeenCalledWith({ where: { id: 'bc-1' } });
+      expect(txMock.barcode.findFirst).toHaveBeenCalledWith({
+        where: { productId: 'prod-1' },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(txMock.barcode.update).toHaveBeenCalledWith({
+        where: { id: 'bc-remaining' },
+        data: { isPrimary: true },
+      });
+    });
+
+    it('setPrimaryBarcode mengupdate barcode menjadi primary', async () => {
+      const cache = new InMemoryCacheStore();
+      const txMock = {
+        barcode: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          update: jest.fn().mockResolvedValue({
+            id: 'bc-secondary',
+            barcode: '8999999999999',
+            isPrimary: true,
+          }),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        product: { findFirst: jest.fn().mockResolvedValue(mockProductWeight) },
+        barcode: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'bc-secondary',
+            productId: 'prod-1',
+            isPrimary: false,
+            barcode: '8999999999999',
+          }),
+        },
+        $transaction: jest.fn().mockImplementation(async (callback) => callback(txMock)),
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      const result = await service.setPrimaryBarcode('prod-1', 'bc-secondary', managerActor);
+      expect(result.id).toBe('bc-secondary');
+      expect(result.isPrimary).toBe(true);
+      expect(txMock.barcode.updateMany).toHaveBeenCalledWith({
+        where: { productId: 'prod-1', isPrimary: true },
+        data: { isPrimary: false },
+      });
+    });
+
+    it('setPrimaryBarcode mengembalikan langsung jika barcode sudah berstatus primary', async () => {
+      const cache = new InMemoryCacheStore();
+      const prisma = {
+        product: { findFirst: jest.fn().mockResolvedValue(mockProductWeight) },
+        barcode: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'bc-1',
+            productId: 'prod-1',
+            isPrimary: true,
+            barcode: '8991234567890',
+          }),
+        },
+        $transaction: jest.fn(),
+      } as unknown as PrismaClient;
+      const service = new ProductService(prisma, cache, cacheCfg);
+
+      const result = await service.setPrimaryBarcode('prod-1', 'bc-1', managerActor);
+      expect(result.id).toBe('bc-1');
+      expect(result.isPrimary).toBe(true);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
 });

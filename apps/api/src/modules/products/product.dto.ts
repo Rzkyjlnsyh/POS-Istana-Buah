@@ -1,6 +1,11 @@
 import type {
+  AddProductBarcode,
+  AddProductBarcodeDto,
   CreateProductInput,
+  GenerateBarcodeQuery,
+  GenerateBarcodeResult,
   ProductBarcodeDto,
+  ProductBarcodeIdParam,
   ProductBarcodeParam,
   ProductCategoryRef,
   ProductDto,
@@ -11,7 +16,10 @@ import type {
 } from '@istana-buah/shared';
 
 export {
+  addProductBarcodeSchema,
   createProductSchema,
+  generateBarcodeQuerySchema,
+  productBarcodeIdParamSchema,
   productBarcodeParamSchema,
   productIdParamSchema,
   productListQuerySchema,
@@ -19,8 +27,13 @@ export {
 } from '@istana-buah/shared';
 
 export type {
+  AddProductBarcode,
+  AddProductBarcodeDto,
   CreateProductInput,
+  GenerateBarcodeQuery,
+  GenerateBarcodeResult,
   ProductBarcodeDto,
+  ProductBarcodeIdParam,
   ProductBarcodeParam,
   ProductCategoryRef,
   ProductDto,

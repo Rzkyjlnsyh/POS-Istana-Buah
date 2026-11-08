@@ -3,8 +3,11 @@ import type { Request, Response } from 'express';
 import { AppError } from '../../utils/app-error';
 import { extractClientMeta } from '../../utils/request-meta';
 import type {
+  AddProductBarcode,
   CreateProductInput,
+  GenerateBarcodeQuery,
   ProductActorContext,
+  ProductBarcodeIdParam,
   ProductBarcodeParam,
   ProductIdParam,
   ProductListQuery,
@@ -65,5 +68,50 @@ export class ProductController {
     const { id } = req.params as unknown as ProductIdParam;
     await this.productService.remove(id, buildActor(req));
     res.status(200).json({ success: true, message: 'Produk berhasil dihapus' });
+  };
+
+  generateBarcode = async (req: Request, res: Response): Promise<void> => {
+    const query = (req.validatedQuery ?? {}) as GenerateBarcodeQuery;
+    const data = await this.productService.generateBarcode(query.prefix);
+    res.status(200).json({ success: true, data });
+  };
+
+  generateAndAttachBarcode = async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params as unknown as ProductIdParam;
+    const query = (req.validatedQuery ?? {}) as GenerateBarcodeQuery;
+    const isPrimary = (req.body as { isPrimary?: boolean })?.isPrimary;
+    const data = await this.productService.generateAndAttachBarcode(
+      id,
+      query.prefix,
+      isPrimary,
+      buildActor(req),
+    );
+    res.status(201).json({
+      success: true,
+      data,
+      message: 'Barcode berhasil di-generate dan dipasangkan',
+    });
+  };
+
+  addBarcode = async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params as unknown as ProductIdParam;
+    const data = await this.productService.addBarcode(
+      id,
+      req.body as AddProductBarcode,
+      buildActor(req),
+    );
+    res.status(201).json({ success: true, data, message: 'Barcode berhasil ditambahkan' });
+  };
+
+  removeBarcode = async (req: Request, res: Response): Promise<void> => {
+    const { id, barcodeId } = req.params as unknown as ProductBarcodeIdParam;
+    await this.productService.removeBarcode(id, barcodeId, buildActor(req));
+    res.status(200).json({ success: true, message: 'Barcode berhasil dihapus' });
+  };
+
+  setPrimaryBarcode = async (req: Request, res: Response): Promise<void> => {
+    const { id, barcodeId } = req.params as unknown as ProductBarcodeIdParam;
+    const data = await this.productService.setPrimaryBarcode(id, barcodeId, buildActor(req));
+    res.status(200).json({ success: true, data, message: 'Barcode utama berhasil diperbarui' });
   };
 }
