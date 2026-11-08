@@ -201,9 +201,11 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
       expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
     });
 
-    // 1. Klik produk timbang Mangga (Rp 25.000)
+    // 1. Klik produk timbang Mangga (Rp 25.000) -> buka modal berat dan konfirmasi 1 kg
     const manggaCard = screen.getByText('Mangga Harum Manis').closest('button')!;
     await user.click(manggaCard);
+    await user.click(screen.getByRole('button', { name: /\+1 kg/i }));
+    await user.click(screen.getByRole('button', { name: /tambah ke keranjang/i }));
 
     // Keranjang harus memuat Mangga
     const cartRegion = screen.getByRole('region', { name: /keranjang belanja kasir/i });
@@ -261,8 +263,8 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
       expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
     });
 
-    // Tambahkan Mangga
-    await user.click(screen.getByText('Mangga Harum Manis').closest('button')!);
+    // Tambahkan Nanas (satuan)
+    await user.click(screen.getByText('Nanas Madu Pemalang').closest('button')!);
 
     const cartRegion = screen.getByRole('region', { name: /keranjang belanja kasir/i });
     expect(within(cartRegion).getByText('1 item')).toBeInTheDocument();
@@ -289,8 +291,8 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
     const bukaButton = within(dialog).getByRole('button', { name: /^buka$/i });
     await user.click(bukaButton);
 
-    // Mangga dipulihkan ke keranjang aktif
-    expect(within(cartRegion).getByText('Mangga Harum Manis')).toBeInTheDocument();
+    // Nanas dipulihkan ke keranjang aktif
+    expect(within(cartRegion).getByText('Nanas Madu Pemalang')).toBeInTheDocument();
   });
 
   it('mendukung pintasan keyboard F4 untuk memfokuskan pencarian', async () => {
@@ -449,6 +451,81 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
 
     await waitFor(() => {
       expect(screen.getByText(/stok apel fuji rrc super habis/i)).toBeInTheDocument();
+    });
+  });
+
+  it('M03-005: membuka modal berat saat produk timbang (WEIGHT) diklik dan memasukkan berat akurat', async () => {
+    const user = userEvent.setup();
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
+    });
+
+    // Klik kartu Mangga Harum Manis (produk WEIGHT)
+    const manggaCard = screen.getByRole('button', { name: /mangga harum manis/i });
+    await user.click(manggaCard);
+
+    // Modal Input Berat muncul
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /input berat produk/i })).toBeInTheDocument();
+
+    // Input berat 2.500 kg menggunakan numpad
+    await user.click(screen.getByRole('button', { name: '2' }));
+    await user.click(screen.getByRole('button', { name: /titik desimal/i }));
+    await user.click(screen.getByRole('button', { name: '5' }));
+
+    expect(screen.getByTestId('weight-display-value')).toHaveTextContent('2.500');
+
+    // Klik tombol tambah ke keranjang
+    const confirmBtn = screen.getByRole('button', { name: /tambah ke keranjang/i });
+    await user.click(confirmBtn);
+
+    // Item masuk ke keranjang dengan 2.500 kg
+    await waitFor(() => {
+      const cartItems = screen.getByLabelText(/daftar item keranjang/i);
+      expect(within(cartItems).getByText('Mangga Harum Manis')).toBeInTheDocument();
+      expect(within(cartItems).getByText(/2[,.]500 kg/i)).toBeInTheDocument();
+      // Total 2.5 kg * 25.000 = Rp 62.500
+      expect(within(cartItems).getByText('Rp 62.500')).toBeInTheDocument();
+    });
+  });
+
+  it('M03-005: mengizinkan pengubahan berat item yang sudah ada di keranjang via modal numpad', async () => {
+    const user = userEvent.setup();
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
+    });
+
+    // Tambah Mangga 1 kg via modal
+    await user.click(screen.getByRole('button', { name: /mangga harum manis/i }));
+    await user.click(screen.getByRole('button', { name: /\+1 kg/i }));
+    await user.click(screen.getByRole('button', { name: /tambah ke keranjang/i }));
+
+    // Di keranjang, klik tombol kuantitas/berat untuk edit
+    const cartItems = screen.getByLabelText(/daftar item keranjang/i);
+    const weightBtn = within(cartItems).getByRole('button', {
+      name: /ubah kuantitas atau berat mangga harum manis/i,
+    });
+    await user.click(weightBtn);
+
+    // Modal berat terbuka kembali dengan nilai awal 1.000 kg
+    expect(screen.getByRole('heading', { name: /input berat produk/i })).toBeInTheDocument();
+    expect(screen.getByTestId('weight-display-value')).toHaveTextContent('1.000');
+
+    // Ubah menjadi 3.000 kg via preset +1 kg dua kali
+    await user.click(screen.getByRole('button', { name: /\+1 kg/i }));
+    await user.click(screen.getByRole('button', { name: /\+1 kg/i }));
+    expect(screen.getByTestId('weight-display-value')).toHaveTextContent('3.000');
+
+    await user.click(screen.getByRole('button', { name: /tambah ke keranjang/i }));
+
+    // Keranjang terupdate menjadi 3.000 kg dan Rp 75.000
+    await waitFor(() => {
+      expect(within(cartItems).getByText(/3[,.]000 kg/i)).toBeInTheDocument();
+      expect(within(cartItems).getByText('Rp 75.000')).toBeInTheDocument();
     });
   });
 });
