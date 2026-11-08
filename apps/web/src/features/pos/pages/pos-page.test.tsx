@@ -11,6 +11,17 @@ import { PosPage } from './pos-page';
 
 vi.mock('../../categories/api/category-api');
 vi.mock('../../products/api/product-api');
+vi.mock('@zxing/library', () => {
+  return {
+    BrowserMultiFormatReader: vi.fn().mockImplementation(() => ({
+      listVideoInputDevices: vi
+        .fn()
+        .mockResolvedValue([{ deviceId: 'cam-mock', label: 'Kamera Mock' }]),
+      decodeFromVideoDevice: vi.fn(),
+      reset: vi.fn(),
+    })),
+  };
+});
 
 const mockCategories: CategoryDto[] = [
   {
@@ -356,5 +367,88 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
     expect(scrollLeft).toBeInTheDocument();
     await user.click(scrollRight);
     await user.click(scrollLeft);
+  });
+
+  it('M03-004: mendeteksi scanner barcode USB HID dan otomatis memasukkan produk ke keranjang', async () => {
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nanas Madu Pemalang')).toBeInTheDocument();
+    });
+
+    let mockTime = 2000;
+    vi.spyOn(Date, 'now').mockImplementation(() => mockTime);
+
+    // Simulasikan pemindai USB HID membaca barcode '899100100002' (Nanas Madu)
+    const barcodeChars = '899100100002'.split('');
+    for (const char of barcodeChars) {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+      mockTime += 15;
+    }
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/nanas madu pemalang ditambahkan ke keranjang/i)).toBeInTheDocument();
+    });
+
+    // Keranjang terupdate dengan produk tersebut
+    const cartItems = screen.getByLabelText(/daftar item keranjang/i);
+    expect(within(cartItems).getByText('Nanas Madu Pemalang')).toBeInTheDocument();
+  });
+
+  it('M03-004: membuka modal kamera saat tombol pemindai kamera diklik', async () => {
+    const user = userEvent.setup();
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
+    });
+
+    const cameraBtn = screen.getByRole('button', { name: /buka pemindai kamera barcode/i });
+    await user.click(cameraBtn);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /pindai barcode produk/i })).toBeInTheDocument();
+  });
+
+  it('M03-004: menangani input barcode manual dengan tombol Enter dan menampilkan notifikasi jika tidak ditemukan', async () => {
+    const user = userEvent.setup();
+    vi.mocked(productApi.getProductByBarcode).mockRejectedValueOnce(new Error('Not found'));
+
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mangga Harum Manis')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText(/cari nama produk atau scan barcode/i);
+    await user.type(searchInput, '9999999999999{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByText(/barcode "9999999999999" tidak terdaftar/i)).toBeInTheDocument();
+    });
+  });
+
+  it('M03-004: menampilkan peringatan saat barcode yang di-scan memiliki stok habis', async () => {
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Apel Fuji RRC Super')).toBeInTheDocument();
+    });
+
+    let mockTime = 3000;
+    vi.spyOn(Date, 'now').mockImplementation(() => mockTime);
+
+    // Apel Fuji memiliki stok 0.000
+    const barcodeChars = '899100100003'.split('');
+    for (const char of barcodeChars) {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+      mockTime += 15;
+    }
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/stok apel fuji rrc super habis/i)).toBeInTheDocument();
+    });
   });
 });

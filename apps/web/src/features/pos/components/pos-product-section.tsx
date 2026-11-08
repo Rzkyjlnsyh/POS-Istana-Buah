@@ -1,5 +1,5 @@
 import type { CategoryDto, ProductDto } from '@istana-buah/shared';
-import { Barcode, ChevronLeft, ChevronRight, Package, Search, X } from 'lucide-react';
+import { Barcode, Camera, ChevronLeft, ChevronRight, Package, Search, X } from 'lucide-react';
 import React, { useRef } from 'react';
 import { cn } from '../../../lib/cn';
 import { PosProductCard } from './pos-product-card';
@@ -12,6 +12,8 @@ export interface PosProductSectionProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSelectProduct: (product: ProductDto) => void;
+  onOpenScannerModal?: () => void;
+  onBarcodeSubmit?: (barcode: string) => void;
   isLoading?: boolean;
 }
 
@@ -23,6 +25,8 @@ export function PosProductSection({
   searchQuery,
   onSearchChange,
   onSelectProduct,
+  onOpenScannerModal,
+  onBarcodeSubmit,
   isLoading = false,
 }: PosProductSectionProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -36,6 +40,13 @@ export function PosProductSection({
       } else {
         categoryScrollRef.current.scrollLeft += scrollOffset;
       }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim() && onBarcodeSubmit) {
+      e.preventDefault();
+      onBarcodeSubmit(searchQuery.trim());
     }
   };
 
@@ -57,12 +68,13 @@ export function PosProductSection({
             type="search"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Cari nama produk atau scan barcode... (F4)"
             aria-label="Cari nama produk atau scan barcode"
-            className="w-full rounded-xl border border-border-strong bg-surface-canvas py-2.5 pl-10 pr-20 text-sm font-medium text-ink-primary placeholder:text-ink-muted focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            className="w-full rounded-xl border border-border-strong bg-surface-canvas py-2.5 pl-10 pr-28 text-sm font-medium text-ink-primary placeholder:text-ink-muted focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
           />
 
-          <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+          <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1.5">
             {searchQuery ? (
               <button
                 type="button"
@@ -71,6 +83,18 @@ export function PosProductSection({
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink-primary"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : null}
+
+            {onOpenScannerModal ? (
+              <button
+                type="button"
+                onClick={onOpenScannerModal}
+                aria-label="Buka pemindai kamera barcode"
+                title="Buka kamera untuk memindai barcode"
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
+              >
+                <Camera className="h-4 w-4" aria-hidden="true" />
               </button>
             ) : null}
 
