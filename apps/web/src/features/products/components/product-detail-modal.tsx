@@ -6,6 +6,7 @@ import {
   Layers,
   Package,
   Pencil,
+  Printer,
   Scale,
   Trash2,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ export interface ProductDetailModalProps {
   product: ProductDto | null;
   onEdit?: (product: ProductDto) => void;
   onDelete?: (product: ProductDto) => void;
+  onPrintBarcode?: (product: ProductDto, barcode?: string) => void;
   canManage: boolean;
   canViewHpp: boolean;
 }
@@ -68,6 +70,7 @@ export function ProductDetailModal({
   product,
   onEdit,
   onDelete,
+  onPrintBarcode,
   canManage,
   canViewHpp,
 }: ProductDetailModalProps) {
@@ -275,6 +278,19 @@ export function ProductDetailModal({
                       Utama
                     </span>
                   ) : null}
+                  {onPrintBarcode ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onPrintBarcode(product, bc.barcode);
+                      }}
+                      aria-label={`Cetak label barcode ${bc.barcode}`}
+                      className="ml-0.5 rounded p-1 text-ink-muted hover:bg-emerald-50 hover:text-emerald-700"
+                    >
+                      <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -307,6 +323,21 @@ export function ProductDetailModal({
           <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto">
             Tutup
           </Button>
+
+          {onPrintBarcode && product.barcodes.length > 0 ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                onClose();
+                onPrintBarcode(product);
+              }}
+              className="w-full sm:w-auto"
+            >
+              <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Cetak Barcode
+            </Button>
+          ) : null}
 
           {canManage && onDelete ? (
             <Button

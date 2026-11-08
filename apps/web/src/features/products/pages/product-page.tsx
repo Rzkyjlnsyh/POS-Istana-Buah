@@ -9,6 +9,7 @@ import {
   Package,
   Pencil,
   Plus,
+  Printer,
   RefreshCw,
   Scale,
   Search,
@@ -21,6 +22,7 @@ import { Input } from '../../../components/ui/input';
 import { useAuthStore } from '../../../stores/auth-store';
 import { getCategories } from '../../categories/api/category-api';
 import { getProducts } from '../api/product-api';
+import { BarcodePrintModal } from '../components/barcode-print-modal';
 import { ProductDeleteModal } from '../components/product-delete-modal';
 import { ProductDetailModal } from '../components/product-detail-modal';
 import { ProductFormModal } from '../components/product-form-modal';
@@ -86,6 +88,9 @@ export function ProductPage() {
   const [viewingProduct, setViewingProduct] = useState<ProductDto | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState<ProductDto | null>(null);
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printingProduct, setPrintingProduct] = useState<ProductDto | null>(null);
+  const [printingBarcode, setPrintingBarcode] = useState<string | undefined>(undefined);
 
   // Debounce search input (<300ms)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -229,6 +234,12 @@ export function ProductPage() {
   const handleOpenDelete = (product: ProductDto) => {
     setDeletingProduct(product);
     setDeleteModalOpen(true);
+  };
+
+  const handleOpenPrint = (product: ProductDto, barcode?: string) => {
+    setPrintingProduct(product);
+    setPrintingBarcode(barcode);
+    setPrintModalOpen(true);
   };
 
   const handleFormSuccess = () => {
@@ -692,6 +703,17 @@ export function ProductPage() {
                               <Eye className="h-4 w-4" aria-hidden="true" />
                             </Button>
 
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => handleOpenPrint(product)}
+                              className="h-8 w-8 p-0"
+                              aria-label={`Cetak label barcode ${product.name}`}
+                              disabled={product.barcodes.length === 0}
+                            >
+                              <Printer className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+
                             {canManage ? (
                               <>
                                 <Button
@@ -824,6 +846,17 @@ export function ProductPage() {
                           Detail
                         </Button>
 
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => handleOpenPrint(product)}
+                          className="h-8 px-2 text-xs"
+                          aria-label={`Cetak label barcode ${product.name}`}
+                          disabled={product.barcodes.length === 0}
+                        >
+                          <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+                        </Button>
+
                         {canManage ? (
                           <>
                             <Button
@@ -907,6 +940,7 @@ export function ProductPage() {
         product={viewingProduct}
         onEdit={handleOpenEdit}
         onDelete={handleOpenDelete}
+        onPrintBarcode={handleOpenPrint}
         canManage={canManage}
         canViewHpp={canViewHpp}
       />
@@ -916,6 +950,13 @@ export function ProductPage() {
         onClose={() => setDeleteModalOpen(false)}
         product={deletingProduct}
         onSuccess={handleDeleteSuccess}
+      />
+
+      <BarcodePrintModal
+        isOpen={printModalOpen}
+        onClose={() => setPrintModalOpen(false)}
+        product={printingProduct}
+        initialBarcode={printingBarcode}
       />
     </div>
   );
