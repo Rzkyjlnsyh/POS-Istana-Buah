@@ -7,6 +7,7 @@ import { bootstrapAuthSession } from '../features/auth/api/auth-api';
 import { ChangePasswordPage } from '../features/auth/pages/change-password-page';
 import { LoginPage } from '../features/auth/pages/login-page';
 import { CategoryPage } from '../features/categories/pages/category-page';
+import { PosPage } from '../features/pos/pages/pos-page';
 import { ProductPage } from '../features/products/pages/product-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
 import { ROLE_LABELS_ID } from './navigation-config';
@@ -26,17 +27,6 @@ function ModuleWorkspaceSection({ title, description }: { title: string; descrip
         </p>
       ) : null}
     </section>
-  );
-}
-
-function PosWorkspaceOverview() {
-  return (
-    <div className="mx-auto w-full max-w-container flex-1 px-4 py-6 sm:px-6">
-      <ModuleWorkspaceSection
-        title="Layar Kasir (POS)"
-        description="Area kerja kasir siap menerima transaksi penjualan buah segar berbasis berat (kg) maupun satuan (unit)."
-      />
-    </div>
   );
 }
 
@@ -81,7 +71,7 @@ export function AppRoutes() {
             path="/pos"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER', 'CASHIER']}>
-                <PosWorkspaceOverview />
+                <PosPage />
               </RequireRole>
             }
           />
