@@ -1,4 +1,4 @@
-import type { CategoryDto, ProductDto } from '@istana-buah/shared';
+import type { CategoryDto, ProductDto, TransactionDto } from '@istana-buah/shared';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
@@ -6,11 +6,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../../../stores/auth-store';
 import * as categoryApi from '../../categories/api/category-api';
 import * as productApi from '../../products/api/product-api';
+import * as transactionApi from '../api/transaction-api';
 import { usePosCartStore } from '../stores/pos-cart-store';
 import { PosPage } from './pos-page';
 
 vi.mock('../../categories/api/category-api');
 vi.mock('../../products/api/product-api');
+vi.mock('../api/transaction-api', () => ({
+  createTransaction: vi.fn(),
+  getTransactions: vi.fn(),
+  getTransactionById: vi.fn(),
+  voidTransaction: vi.fn(),
+}));
 vi.mock('@zxing/library', () => {
   return {
     BrowserMultiFormatReader: vi.fn().mockImplementation(() => ({
@@ -527,5 +534,100 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
       expect(within(cartItems).getByText(/3[,.]000 kg/i)).toBeInTheDocument();
       expect(within(cartItems).getByText('Rp 75.000')).toBeInTheDocument();
     });
+  });
+
+  it('M03-006: membuka modal pembayaran saat tombol Bayar Tunai diklik dan menyelesaikan transaksi hingga modal sukses muncul', async () => {
+    const user = userEvent.setup();
+    const mockCreatedTx: TransactionDto = {
+      id: 'tx-pos-001',
+      transactionNo: 'TRX-20261108-0100',
+      shiftId: null,
+      cashierId: 'cashier-1',
+      cashierName: 'Budi Santoso',
+      status: 'COMPLETED',
+      subtotal: '30000',
+      discountAmount: '0',
+      taxAmount: '0',
+      totalAmount: '30000',
+      paymentMethod: 'CASH',
+      amountPaid: '50000',
+      changeAmount: '20000',
+      notes: null,
+      voidedBy: null,
+      voidedAt: null,
+      voidReason: null,
+      clientId: 'client-123',
+      syncedAt: null,
+      transactedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      items: [],
+    };
+    vi.mocked(transactionApi.createTransaction).mockResolvedValueOnce(mockCreatedTx);
+
+    render(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nanas Madu Pemalang')).toBeInTheDocument();
+    });
+
+    // Tambah Nanas Madu ke keranjang (2 pcs = 30.000)
+    const catalog = screen.getByRole('region', { name: /katalog produk dan pencarian/i });
+    const nanasCard = within(catalog).getByRole('button', { name: /nanas madu pemalang/i });
+    await user.click(nanasCard);
+    await user.click(nanasCard);
+
+    // Klik tombol Bayar Tunai di keranjang
+    const payCashBtn = screen.getByRole('button', { name: /bayar tunai/i });
+    await user.click(payCashBtn);
+
+    // Modal proses pembayaran terbuka
+    expect(screen.getByRole('heading', { name: /proses pembayaran/i })).toBeInTheDocument();
+
+    // Pilih Uang Pas
+    const uangPasBtn = screen.getByRole('button', { name: /uang pas:/i });
+    await user.click(uangPasBtn);
+
+    // Konfirmasi pembayaran
+    const confirmBtn = screen.getByRole('button', { name: /konfirmasi pembayaran/i });
+    await user.click(confirmBtn);
+
+    // Modal sukses muncul dengan nomor transaksi TRX-20261108-0100
+    await waitFor(() => {
+      expect(screen.getByText('Transaksi Berhasil Disimpan')).toBeInTheDocument();
+      expect(screen.getByText('TRX-20261108-0100')).toBeInTheDocument();
+    });
+
+    // Klik Transaksi Baru
+    const newTxBtn = screen.getByRole('button', { name: /transaksi baru/i });
+    await user.click(newTxBtn);
+
+    // Modal tertutup dan keranjang kosong
+    await waitFor(() => {
+      expect(screen.queryByText('Transaksi Berhasil Disimpan')).not.toBeInTheDocument();
+      expect(screen.getByText('Keranjang belanja kosong')).toBeInTheDocument();
+    });
+  });
+
+  it('M03-006: membuka modal pembayaran dengan shortcut F1, F2, F3 dan memblokir shortcut jika keranjang kosong', async () => {
+    render(<PosPage />);
+
+    // Tekan F1 saat keranjang kosong -> Notifikasi muncul
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.queryByRole('heading', { name: /proses pembayaran/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/keranjang belanja masih kosong/i)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('Nanas Madu Pemalang')).toBeInTheDocument();
+    });
+
+    // Tambah Nanas ke keranjang
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /nanas madu pemalang/i }));
+
+    // Tekan F2 -> Membuka QRIS
+    fireEvent.keyDown(window, { key: 'F2' });
+    expect(screen.getByRole('heading', { name: /proses pembayaran/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /qris/i })).toHaveAttribute('aria-selected', 'true');
   });
 });

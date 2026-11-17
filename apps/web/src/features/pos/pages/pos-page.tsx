@@ -1,10 +1,12 @@
-import type { CategoryDto, ProductDto } from '@istana-buah/shared';
+import type { CategoryDto, PaymentMethod, ProductDto, TransactionDto } from '@istana-buah/shared';
 import { AlertCircle, CheckCircle2, ShoppingCart } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { getCategories } from '../../categories/api/category-api';
 import { getProductByBarcode, getProducts } from '../../products/api/product-api';
 import { PosCameraScannerModal } from '../components/pos-camera-scanner-modal';
 import { PosCartSection } from '../components/pos-cart-section';
+import { PosPaymentModal } from '../components/pos-payment-modal';
+import { PosPaymentSuccessModal } from '../components/pos-payment-success-modal';
 import { PosProductSection } from '../components/pos-product-section';
 import { PosStatusBar } from '../components/pos-status-bar';
 import { PosWeightModal } from '../components/pos-weight-modal';
@@ -35,6 +37,17 @@ export function PosPage() {
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  const [paymentModal, setPaymentModal] = useState<{
+    isOpen: boolean;
+    method: PaymentMethod;
+  }>({
+    isOpen: false,
+    method: 'CASH',
+  });
+
+  const [completedTransaction, setCompletedTransaction] = useState<TransactionDto | null>(null);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
 
   const addItem = usePosCartStore((state) => state.addItem);
   const updateQuantity = usePosCartStore((state) => state.updateQuantity);
@@ -200,21 +213,59 @@ export function PosPage() {
     enabled: true,
   });
 
-  const handlePayCash = useCallback(() => {
-    // Akan diintegrasikan dengan Payment Modal (M03-006)
+  const openPaymentModal = useCallback(
+    (method: PaymentMethod) => {
+      if (items.length === 0) {
+        showNotification('error', 'Keranjang belanja masih kosong.');
+        return;
+      }
+      setPaymentModal({ isOpen: true, method });
+    },
+    [items.length, showNotification],
+  );
+
+  const handlePayCash = useCallback(() => openPaymentModal('CASH'), [openPaymentModal]);
+  const handlePayQris = useCallback(() => openPaymentModal('QRIS'), [openPaymentModal]);
+  const handlePayTransfer = useCallback(
+    () => openPaymentModal('BANK_TRANSFER'),
+    [openPaymentModal],
+  );
+
+  const handlePaymentSuccess = useCallback(
+    (transaction: TransactionDto) => {
+      setCompletedTransaction(transaction);
+      setIsSuccessModalOpen(true);
+      clearCart();
+      showNotification('success', `Transaksi ${transaction.transactionNo} berhasil disimpan!`);
+    },
+    [clearCart, showNotification],
+  );
+
+  const handleNewTransaction = useCallback(() => {
+    setIsSuccessModalOpen(false);
+    setCompletedTransaction(null);
+    const searchInput = document.getElementById('pos-product-search-input');
+    searchInput?.focus();
   }, []);
 
-  const handlePayQris = useCallback(() => {
-    // Akan diintegrasikan dengan Payment Modal (M03-006)
-  }, []);
-
-  const handlePayTransfer = useCallback(() => {
-    // Akan diintegrasikan dengan Payment Modal (M03-006)
-  }, []);
+  const handlePrintReceipt = useCallback(
+    (transaction: TransactionDto) => {
+      showNotification('success', `Mencetak struk ${transaction.transactionNo}...`);
+      if (typeof window !== 'undefined' && typeof window.print === 'function') {
+        window.print();
+      }
+    },
+    [showNotification],
+  );
 
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Abaikan shortcut jika ada modal aktif
+      if (isCameraModalOpen || weightModal.isOpen || paymentModal.isOpen || isSuccessModalOpen) {
+        return;
+      }
+
       const activeEl = document.activeElement;
       const isInput =
         activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement;
@@ -242,7 +293,16 @@ export function PosPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [clearCart, handlePayCash, handlePayQris, handlePayTransfer]);
+  }, [
+    clearCart,
+    handlePayCash,
+    handlePayQris,
+    handlePayTransfer,
+    isCameraModalOpen,
+    isSuccessModalOpen,
+    paymentModal.isOpen,
+    weightModal.isOpen,
+  ]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -371,6 +431,23 @@ export function PosPage() {
         product={weightModal.product}
         initialWeight={weightModal.initialWeight}
         onConfirm={handleConfirmWeight}
+      />
+
+      {/* Modal Proses Pembayaran (M03-006) */}
+      <PosPaymentModal
+        isOpen={paymentModal.isOpen}
+        initialMethod={paymentModal.method}
+        onClose={() => setPaymentModal((prev) => ({ ...prev, isOpen: false }))}
+        onSuccess={handlePaymentSuccess}
+      />
+
+      {/* Modal Sukses Pembayaran (M03-006) */}
+      <PosPaymentSuccessModal
+        isOpen={isSuccessModalOpen}
+        onClose={() => setIsSuccessModalOpen(false)}
+        transaction={completedTransaction}
+        onPrintReceipt={handlePrintReceipt}
+        onNewTransaction={handleNewTransaction}
       />
 
       {/* Bottom Status Bar */}
