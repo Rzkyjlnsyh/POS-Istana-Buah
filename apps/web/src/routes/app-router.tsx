@@ -10,6 +10,7 @@ import { CategoryPage } from '../features/categories/pages/category-page';
 import { PosPage } from '../features/pos/pages/pos-page';
 import { TransactionHistoryPage } from '../features/pos/pages/transaction-history-page';
 import { ProductPage } from '../features/products/pages/product-page';
+import { ReportPage } from '../features/reports/pages/report-page';
 import { ShiftPage } from '../features/shifts/pages/shift-page';
 import { StockPage } from '../features/stock/pages/stock-page';
 import { SupplierPage } from '../features/suppliers/pages/supplier-page';
@@ -157,10 +158,7 @@ export function AppRoutes() {
             path="/reports"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
-                <ModuleWorkspaceSection
-                  title="Laporan Penjualan & Stok"
-                  description="Tinjau performa penjualan harian, produk terlaris, margin kotor, dan ekspor laporan."
-                />
+                <ReportPage />
               </RequireRole>
             }
           />
