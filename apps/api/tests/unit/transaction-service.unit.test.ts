@@ -521,4 +521,221 @@ describe('M03-001 Unit: TransactionService', () => {
     const asManager = await service.getById('tx-foreign', 'MANAGER', 'mgr');
     expect(asManager.id).toBe('tx-foreign');
   });
+
+  it('M03-009: menolak total kumulatif item duplikat produk dalam satu keranjang bila melebihi stok', async () => {
+    const cache = new InMemoryCacheStore();
+    const txMock = {
+      transaction: { findFirst: jest.fn().mockResolvedValue(null) },
+      product: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            ...mockProductWeight,
+            stockQty: new Prisma.Decimal(3.0),
+          },
+        ]),
+      },
+    };
+    const prisma = {
+      transaction: { findUnique: jest.fn().mockResolvedValue(null) },
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(txMock)),
+    } as unknown as PrismaClient;
+
+    const service = new TransactionService(prisma, cache);
+
+    await expect(
+      service.create(
+        {
+          items: [
+            { productId: 'prod-w-1', quantity: 2.0, unitPrice: 25000 },
+            { productId: 'prod-w-1', quantity: 2.0, unitPrice: 25000 },
+          ],
+          paymentMethod: 'CASH',
+          amountPaid: 100000,
+        },
+        cashierActor,
+      ),
+    ).rejects.toMatchObject({
+      statusCode: 422,
+      code: ERROR_CODES.INSUFFICIENT_STOCK,
+    });
+  });
+
+  it('M03-009: menangani P2002 balapan clientId paralel dan mengembalikan transaksi pemenang secara idempoten', async () => {
+    const cache = new InMemoryCacheStore();
+    const winnerTx = {
+      id: 'tx-winner',
+      transactionNo: 'TRX-20261117-0001',
+      shiftId: null,
+      cashierId: cashierActor.userId,
+      status: 'COMPLETED' as const,
+      subtotal: new Prisma.Decimal(25000),
+      discountAmount: new Prisma.Decimal(0),
+      taxAmount: new Prisma.Decimal(0),
+      totalAmount: new Prisma.Decimal(25000),
+      paymentMethod: 'QRIS' as const,
+      amountPaid: new Prisma.Decimal(25000),
+      changeAmount: new Prisma.Decimal(0),
+      notes: null,
+      voidedBy: null,
+      voidedAt: null,
+      voidReason: null,
+      clientId: 'race-client-id',
+      syncedAt: null,
+      transactedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      cashier: { id: cashierActor.userId, fullName: cashierActor.fullName },
+      items: [],
+    };
+    const p2002 = new Prisma.PrismaClientKnownRequestError('Unique failed', {
+      code: 'P2002',
+      clientVersion: '5.22.0',
+    });
+
+    const prisma = {
+      transaction: {
+        findUnique: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(winnerTx),
+      },
+      $transaction: jest.fn().mockRejectedValueOnce(p2002),
+    } as unknown as PrismaClient;
+
+    const service = new TransactionService(prisma, cache);
+    const res = await service.create(
+      {
+        clientId: 'race-client-id',
+        items: [{ productId: 'prod-w-1', quantity: 1, unitPrice: 25000 }],
+        paymentMethod: 'QRIS',
+        amountPaid: 25000,
+      },
+      cashierActor,
+    );
+    expect(res.id).toBe('tx-winner');
+    expect(res.changeAmount).toBe('0');
+  });
+
+  it('M03-009: menghitung item UNIT dengan diskon, masking unitCost, serta filter search & shiftId', async () => {
+    const cache = new InMemoryCacheStore();
+    const unitProduct = {
+      id: 'prod-u-1',
+      name: 'Nanas Madu',
+      productType: 'UNIT' as const,
+      pricePerKg: null,
+      pricePerUnit: new Prisma.Decimal(15000),
+      costPerKg: null,
+      costPerUnit: null,
+      stockQty: new Prisma.Decimal(20),
+      isActive: true,
+      deletedAt: null,
+    };
+
+    const createdTx = {
+      id: 'tx-unit-1',
+      transactionNo: 'TRX-20261117-0002',
+      shiftId: 'shift-1',
+      cashierId: managerActor.userId,
+      status: 'COMPLETED' as const,
+      subtotal: new Prisma.Decimal(28000),
+      discountAmount: new Prisma.Decimal(3000),
+      taxAmount: new Prisma.Decimal(0),
+      totalAmount: new Prisma.Decimal(25000),
+      paymentMethod: 'QRIS' as const,
+      amountPaid: new Prisma.Decimal(25000),
+      changeAmount: new Prisma.Decimal(0),
+      notes: 'Tanpa kantong plastik',
+      voidedBy: null,
+      voidedAt: null,
+      voidReason: null,
+      clientId: null,
+      syncedAt: null,
+      transactedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      cashier: { id: managerActor.userId, fullName: managerActor.fullName },
+      items: [
+        {
+          id: 'item-u-1',
+          transactionId: 'tx-unit-1',
+          productId: 'prod-u-1',
+          productName: 'Nanas Madu',
+          productType: 'UNIT' as const,
+          quantity: new Prisma.Decimal(2),
+          unitPrice: new Prisma.Decimal(15000),
+          unitCost: new Prisma.Decimal(0),
+          discountAmount: new Prisma.Decimal(2000),
+          lineTotal: new Prisma.Decimal(28000),
+          createdAt: new Date(),
+        },
+      ],
+    };
+
+    const txMock = {
+      transaction: {
+        findFirst: jest.fn().mockResolvedValue({ transactionNo: 'TRX-20261117-0001' }),
+        create: jest.fn().mockResolvedValue(createdTx),
+      },
+      product: {
+        findMany: jest.fn().mockResolvedValue([unitProduct]),
+        update: jest.fn().mockResolvedValue({ ...unitProduct, stockQty: new Prisma.Decimal(18) }),
+      },
+      stockMovement: { create: jest.fn(), updateMany: jest.fn() },
+      auditLog: { create: jest.fn() },
+    };
+
+    const findManyList = jest.fn().mockResolvedValue([createdTx]);
+    const prisma = {
+      transaction: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(1),
+        findMany: findManyList,
+      },
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(txMock)),
+    } as unknown as PrismaClient;
+
+    const service = new TransactionService(prisma, cache, 'Asia/Jakarta');
+    const created = await service.create(
+      {
+        shiftId: 'shift-1',
+        items: [{ productId: 'prod-u-1', quantity: 2, unitPrice: 15000, discountAmount: 2000 }],
+        discountAmount: 3000,
+        paymentMethod: 'QRIS',
+        amountPaid: 25000,
+        notes: 'Tanpa kantong plastik',
+      },
+      managerActor,
+    );
+
+    expect(created.totalAmount).toBe('25000');
+    expect(created.changeAmount).toBe('0');
+    expect(created.items[0]?.unitCost).toBe('0');
+
+    await service.list(
+      { page: 1, limit: 10, shiftId: 'shift-1', search: 'Nanas' },
+      'MANAGER',
+      managerActor.userId,
+    );
+    expect(findManyList.mock.calls[0]?.[0].where.shiftId).toBe('shift-1');
+    expect(findManyList.mock.calls[0]?.[0].where.OR).toHaveLength(2);
+  });
+
+  it('M03-009: void menolak transaksi tidak ada (404) & status non-COMPLETED (400)', async () => {
+    const cache = new InMemoryCacheStore();
+    const prisma = {
+      transaction: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 'tx-pending', status: 'PENDING', items: [] }),
+      },
+    } as unknown as PrismaClient;
+
+    const service = new TransactionService(prisma, cache);
+
+    await expect(
+      service.void('tx-missing', { reason: 'Tidak ditemukan' }, managerActor),
+    ).rejects.toMatchObject({ statusCode: 404, code: ERROR_CODES.TRANSACTION_NOT_FOUND });
+
+    await expect(
+      service.void('tx-pending', { reason: 'Belum selesai' }, managerActor),
+    ).rejects.toMatchObject({ statusCode: 400, code: ERROR_CODES.VALIDATION_ERROR });
+  });
 });

@@ -52,7 +52,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   const authenticate = createAuthenticateMiddleware({ jwtService, prismaClient: db });
   const categoryService = new CategoryService(db, cacheStore, effectiveCacheCfg);
   const productService = new ProductService(db, cacheStore, effectiveCacheCfg);
-  const transactionService = new TransactionService(db, cacheStore);
+  const transactionService = new TransactionService(db, cacheStore, config.timezone);
 
   const globalRateLimiter = createRateLimiter({
     tier: 'global',

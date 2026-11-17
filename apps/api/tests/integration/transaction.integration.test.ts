@@ -430,4 +430,109 @@ describe('M03-001 Integration: Transaction API, POS Atomic Stock & Idempotency',
       expect(Number(returnMovement?.quantity)).toBe(2);
     });
   });
+
+  describe('M03-009 Race Condition & Concurrency Protection (PostgreSQL)', () => {
+    it('menolak checkout paralel melebihi sisa stok (1 sukses 201, 1 ditolak 422 INSUFFICIENT_STOCK, stok akhir tidak pernah negatif)', async () => {
+      // Sisa testUnitProductId saat ini = 4 butir. Dua kasir memesan 3 butir secara bersamaan (total 6 > 4).
+      const payload = {
+        items: [{ productId: testUnitProductId, quantity: 3, unitPrice: 30000 }],
+        paymentMethod: 'CASH' as const,
+        amountPaid: 100000,
+      };
+
+      const [resA, resB] = await Promise.all([
+        request(app).post('/v1/transactions').set(auth('CASHIER')).send(payload),
+        request(app).post('/v1/transactions').set(auth('MANAGER')).send(payload),
+      ]);
+
+      const statuses = [resA.status, resB.status].sort();
+      expect(statuses).toEqual([201, 422]);
+
+      const rejected = resA.status === 422 ? resA : resB;
+      expect(rejected.body.error.code).toBe(ERROR_CODES.INSUFFICIENT_STOCK);
+
+      // Verifikasi stok tepat 4 - 3 = 1 butir (tidak pernah -2!)
+      const finalProd = await prismaClient.product.findUnique({
+        where: { id: testUnitProductId },
+      });
+      expect(Number(finalProd?.stockQty)).toBe(1);
+    });
+
+    it('menangani balapan sync clientId identik secara paralel tanpa duplikasi transaksi maupun stok berkurang dua kali', async () => {
+      const concurrentClientId = 'concurrent-offline-sync-uuid-999';
+      const payload = {
+        clientId: concurrentClientId,
+        items: [{ productId: testUnitProductId, quantity: 1, unitPrice: 30000 }],
+        paymentMethod: 'QRIS' as const,
+        amountPaid: 30000,
+      };
+
+      const [res1, res2] = await Promise.all([
+        request(app).post('/v1/transactions').set(auth('CASHIER')).send(payload),
+        request(app).post('/v1/transactions').set(auth('CASHIER')).send(payload),
+      ]);
+
+      expect(res1.status).toBe(201);
+      expect(res2.status).toBe(201);
+      expect(res1.body.data.id).toBe(res2.body.data.id);
+      expect(res1.body.data.transactionNo).toBe(res2.body.data.transactionNo);
+
+      const countInDb = await prismaClient.transaction.count({
+        where: { clientId: concurrentClientId },
+      });
+      expect(countInDb).toBe(1);
+
+      const finalProd = await prismaClient.product.findUnique({
+        where: { id: testUnitProductId },
+      });
+      expect(Number(finalProd?.stockQty)).toBe(0);
+    });
+
+    it('mencegah double-void paralel pada transaksi yang sama (hanya 1 berhasil 200, stok dikembalikan tepat 1 kali)', async () => {
+      const listRes = await request(app)
+        .get('/v1/transactions?limit=1&status=COMPLETED')
+        .set(auth('MANAGER'));
+      const targetId = listRes.body.data[0].id as string;
+      const beforeProd = await prismaClient.product.findUnique({
+        where: { id: testUnitProductId },
+      });
+      const stockBefore = Number(beforeProd?.stockQty ?? 0);
+
+      // Buat transaksi khusus untuk uji double-void dengan testWeightProductId
+      const created = await request(app)
+        .post('/v1/transactions')
+        .set(auth('CASHIER'))
+        .send({
+          items: [{ productId: testWeightProductId, quantity: 1.5, unitPrice: 25000 }],
+          paymentMethod: 'CASH',
+          amountPaid: 40000,
+        });
+      expect(created.status).toBe(201);
+      const voidTargetId = created.body.data.id as string;
+      const weightAfterBuy = Number(
+        (await prismaClient.product.findUnique({ where: { id: testWeightProductId } }))?.stockQty,
+      );
+
+      const [void1, void2] = await Promise.all([
+        request(app)
+          .put(`/v1/transactions/${voidTargetId}/void`)
+          .set(auth('MANAGER'))
+          .send({ reason: 'Uji double void paralel satu' }),
+        request(app)
+          .put(`/v1/transactions/${voidTargetId}/void`)
+          .set(auth('OWNER'))
+          .send({ reason: 'Uji double void paralel dua' }),
+      ]);
+
+      expect(targetId).toBeDefined();
+      expect(stockBefore).toBeGreaterThanOrEqual(0);
+      expect([void1.status, void2.status].sort()).toEqual([200, 400]);
+
+      const weightAfterDoubleVoid = Number(
+        (await prismaClient.product.findUnique({ where: { id: testWeightProductId } }))?.stockQty,
+      );
+      // Stok hanya bertambah 1.5 kg satu kali saja, tidak pernah +3.0 kg
+      expect(weightAfterDoubleVoid).toBeCloseTo(weightAfterBuy + 1.5, 3);
+    });
+  });
 });
