@@ -21,3 +21,23 @@ export function parseRangeBoundary(value: string, edge: 'start' | 'end'): Date {
   }
   return new Date(value);
 }
+
+/**
+ * Menghasilkan nomor referensi berurutan harian (`PREFIX-YYYYMMDD-01`) dari daftar referensi eksis.
+ */
+export function buildNextDailyReference(
+  datePrefix: string,
+  existingRefs: Array<string | null>,
+  padDigits: number,
+): string {
+  let maxSeq = 0;
+  for (const ref of existingRefs) {
+    if (!ref) continue;
+    const lastPart = ref.split('-').pop();
+    const parsed = Number(lastPart);
+    if (!Number.isNaN(parsed) && parsed > maxSeq) {
+      maxSeq = parsed;
+    }
+  }
+  return `${datePrefix}${String(maxSeq + 1).padStart(padDigits, '0')}`;
+}

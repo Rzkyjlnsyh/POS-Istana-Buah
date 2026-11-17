@@ -24,6 +24,8 @@ import { createProductRouter } from './modules/products/product.routes';
 import { ProductService } from './modules/products/product.service';
 import { createStockRouter } from './modules/stock/stock.routes';
 import { StockService } from './modules/stock/stock.service';
+import { createPurchaseOrderRouter } from './modules/suppliers/purchase-order.routes';
+import { PurchaseOrderService } from './modules/suppliers/purchase-order.service';
 import { createSupplierRouter } from './modules/suppliers/supplier.routes';
 import { SupplierService } from './modules/suppliers/supplier.service';
 import { createTransactionRouter } from './modules/transactions/transaction.routes';
@@ -58,6 +60,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   const productService = new ProductService(db, cacheStore, effectiveCacheCfg);
   const stockService = new StockService(db, cacheStore, effectiveCacheCfg, config.timezone);
   const supplierService = new SupplierService(db, cacheStore, effectiveCacheCfg);
+  const purchaseOrderService = new PurchaseOrderService(db, cacheStore, config.timezone);
   const transactionService = new TransactionService(db, cacheStore, config.timezone);
 
   const globalRateLimiter = createRateLimiter({
@@ -98,6 +101,10 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   v1Router.use('/products', createProductRouter({ productService, authenticate }));
   v1Router.use('/stock', createStockRouter({ stockService, authenticate }));
   v1Router.use('/suppliers', createSupplierRouter({ supplierService, authenticate }));
+  v1Router.use(
+    '/purchase-orders',
+    createPurchaseOrderRouter({ purchaseOrderService, authenticate }),
+  );
   v1Router.use('/transactions', createTransactionRouter({ transactionService, authenticate }));
 
   app.use('/v1', v1Router);
