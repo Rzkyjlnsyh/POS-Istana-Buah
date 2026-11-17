@@ -9,6 +9,7 @@ import {
   batchImportProductItemSchema,
   batchImportProductsSchema,
   calculateEan13CheckDigit,
+  closeShiftSchema,
   encodeBarcodePattern,
   encodeCode39Pattern,
   encodeEan13Pattern,
@@ -26,6 +27,7 @@ import {
   loginSchema,
   logoutSchema,
   lowStockAlertQuerySchema,
+  openShiftSchema,
   paginationQuerySchema,
   parseCsv,
   payPurchaseOrderSchema,
@@ -33,6 +35,7 @@ import {
   purchaseOrderListQuerySchema,
   receiveStockSchema,
   refreshTokenSchema,
+  shiftListQuerySchema,
   stockMovementListQuerySchema,
   supplierListQuerySchema,
   transactionListQuerySchema,
@@ -627,5 +630,21 @@ describe('Purchase Order Validators (M05-002)', () => {
     expect(parsed.status).toBe('PARTIAL');
     expect(parsed.unpaidOnly).toBe(true);
     expect(parsed.page).toBe(2);
+  });
+});
+
+describe('Shift Validators (M06-001)', () => {
+  it('openShiftSchema, closeShiftSchema, & shiftListQuerySchema memvalidasi input shift kasir', () => {
+    expect(openShiftSchema.safeParse({ openingCash: 500000, notes: 'Shift Pagi' }).success).toBe(
+      true,
+    );
+    expect(openShiftSchema.safeParse({ openingCash: -100 }).success).toBe(false);
+
+    expect(closeShiftSchema.safeParse({ closingCash: 1250000 }).success).toBe(true);
+    expect(closeShiftSchema.safeParse({ closingCash: -1 }).success).toBe(false);
+
+    const parsed = shiftListQuerySchema.parse({ status: 'OPEN', page: '1', limit: '20' });
+    expect(parsed.status).toBe('OPEN');
+    expect(parsed.page).toBe(1);
   });
 });

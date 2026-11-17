@@ -22,6 +22,8 @@ import { createCategoryRouter } from './modules/categories/category.routes';
 import { CategoryService } from './modules/categories/category.service';
 import { createProductRouter } from './modules/products/product.routes';
 import { ProductService } from './modules/products/product.service';
+import { createShiftRouter } from './modules/shifts/shift.routes';
+import { ShiftService } from './modules/shifts/shift.service';
 import { createStockRouter } from './modules/stock/stock.routes';
 import { StockService } from './modules/stock/stock.service';
 import { createPurchaseOrderRouter } from './modules/suppliers/purchase-order.routes';
@@ -58,6 +60,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   const authenticate = createAuthenticateMiddleware({ jwtService, prismaClient: db });
   const categoryService = new CategoryService(db, cacheStore, effectiveCacheCfg);
   const productService = new ProductService(db, cacheStore, effectiveCacheCfg);
+  const shiftService = new ShiftService(db, config.timezone);
   const stockService = new StockService(db, cacheStore, effectiveCacheCfg, config.timezone);
   const supplierService = new SupplierService(db, cacheStore, effectiveCacheCfg);
   const purchaseOrderService = new PurchaseOrderService(db, cacheStore, config.timezone);
@@ -99,6 +102,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
 
   v1Router.use('/categories', createCategoryRouter({ categoryService, authenticate }));
   v1Router.use('/products', createProductRouter({ productService, authenticate }));
+  v1Router.use('/shifts', createShiftRouter({ shiftService, authenticate }));
   v1Router.use('/stock', createStockRouter({ stockService, authenticate }));
   v1Router.use('/suppliers', createSupplierRouter({ supplierService, authenticate }));
   v1Router.use(
