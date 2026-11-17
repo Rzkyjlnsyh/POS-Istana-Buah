@@ -1,6 +1,12 @@
 import type Redis from 'ioredis';
 import { logger } from './logger';
 
+export const CACHE_NAMESPACES = {
+  CATEGORIES: 'categories',
+  PRODUCTS: 'products',
+  STOCK: 'stock',
+} as const;
+
 /**
  * Abstraksi cache-aside (Bagian 15.2). Pembacaan gagal (miss/error Redis) selalu dianggap miss
  * (fail-open) sehingga gangguan Redis tidak pernah menjatuhkan endpoint — DB tetap sumber kebenaran.

@@ -8,7 +8,7 @@ import {
 } from '@istana-buah/shared';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { CacheConfig } from '../../config/cache.config';
-import type { CacheStore } from '../../lib/cache';
+import { CACHE_NAMESPACES, type CacheStore } from '../../lib/cache';
 import { AppError } from '../../utils/app-error';
 import { recordAuditLog } from '../../utils/audit-logger';
 import { CATEGORY_CACHE_NAMESPACE } from '../categories/category.service';
@@ -26,7 +26,7 @@ import type {
   UpdateProductInput,
 } from './product.dto';
 
-export const PRODUCT_CACHE_NAMESPACE = 'products';
+export const PRODUCT_CACHE_NAMESPACE = CACHE_NAMESPACES.PRODUCTS;
 const PRODUCT_ENTITY = 'products';
 const BARCODE_ENTITY = 'barcodes';
 const DEFAULT_IN_STORE_BARCODE_PREFIX = '200';
@@ -340,6 +340,7 @@ export class ProductService {
     await Promise.all([
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
+      this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
     ]);
 
     return toDto(created, actor.role);
@@ -582,6 +583,7 @@ export class ProductService {
     await Promise.all([
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
+      this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
     ]);
 
     return toDto(updated, actor.role);
@@ -619,6 +621,7 @@ export class ProductService {
     await Promise.all([
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
+      this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
     ]);
   }
 
@@ -1144,6 +1147,7 @@ export class ProductService {
     await Promise.all([
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
+      this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
     ]);
 
     return {
