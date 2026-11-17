@@ -16,6 +16,7 @@ import {
   categoryListQuerySchema,
   changePasswordSchema,
   createProductSchema,
+  createPurchaseOrderSchema,
   createStockOpnameSchema,
   createSupplierSchema,
   createTransactionSchema,
@@ -27,7 +28,9 @@ import {
   lowStockAlertQuerySchema,
   paginationQuerySchema,
   parseCsv,
+  payPurchaseOrderSchema,
   productListQuerySchema,
+  purchaseOrderListQuerySchema,
   receiveStockSchema,
   refreshTokenSchema,
   stockMovementListQuerySchema,
@@ -575,5 +578,54 @@ describe('Supplier Validators (M05-001)', () => {
     expect(query.search).toBe('Agro');
     expect(query.isActive).toBe(true);
     expect(query.limit).toBe(25);
+  });
+});
+
+describe('Purchase Order Validators (M05-002)', () => {
+  const validSupplierId = '223e4567-e89b-12d3-a456-426614174000';
+  const validProductId = '123e4567-e89b-12d3-a456-426614174000';
+
+  it('createPurchaseOrderSchema memvalidasi PO, menolak produk duplikat, dan menolak DP melebihi total', () => {
+    expect(
+      createPurchaseOrderSchema.safeParse({
+        supplierId: validSupplierId,
+        items: [{ productId: validProductId, quantity: 10, unitCost: 18000 }],
+        paidAmount: 50000,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      createPurchaseOrderSchema.safeParse({
+        supplierId: validSupplierId,
+        items: [
+          { productId: validProductId, quantity: 10, unitCost: 18000 },
+          { productId: validProductId, quantity: 5, unitCost: 18000 },
+        ],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createPurchaseOrderSchema.safeParse({
+        supplierId: validSupplierId,
+        items: [{ productId: validProductId, quantity: 2, unitCost: 10000 }],
+        paidAmount: 25000,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('payPurchaseOrderSchema & purchaseOrderListQuerySchema memvalidasi pelunasan & filter PO', () => {
+    expect(
+      payPurchaseOrderSchema.safeParse({ amount: 150000, notes: 'Transfer BCA' }).success,
+    ).toBe(true);
+    expect(payPurchaseOrderSchema.safeParse({ amount: 0 }).success).toBe(false);
+
+    const parsed = purchaseOrderListQuerySchema.parse({
+      status: 'PARTIAL',
+      unpaidOnly: 'true',
+      page: '2',
+    });
+    expect(parsed.status).toBe('PARTIAL');
+    expect(parsed.unpaidOnly).toBe(true);
+    expect(parsed.page).toBe(2);
   });
 });
