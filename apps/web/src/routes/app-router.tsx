@@ -11,6 +11,7 @@ import { PosPage } from '../features/pos/pages/pos-page';
 import { TransactionHistoryPage } from '../features/pos/pages/transaction-history-page';
 import { ProductPage } from '../features/products/pages/product-page';
 import { StockPage } from '../features/stock/pages/stock-page';
+import { SupplierPage } from '../features/suppliers/pages/supplier-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
 import { ROLE_LABELS_ID } from './navigation-config';
 import { RequireAuth, RequireRole } from './protected-route';
@@ -139,10 +140,7 @@ export function AppRoutes() {
             path="/suppliers"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
-                <ModuleWorkspaceSection
-                  title="Supplier & Purchase Order"
-                  description="Kelola daftar pemasok buah segar serta pesanan pembelian toko."
-                />
+                <SupplierPage />
               </RequireRole>
             }
           />
