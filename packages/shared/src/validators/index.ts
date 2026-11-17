@@ -4,6 +4,7 @@ export * from './date-range';
 export * from './pagination';
 export * from './product';
 export * from './purchase-order';
+export * from './shift';
 export * from './stock';
 export * from './supplier';
 export * from './transaction';

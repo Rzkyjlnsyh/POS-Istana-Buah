@@ -332,11 +332,22 @@ export class TransactionService {
         const changeAmount =
           input.paymentMethod === 'CASH' ? Math.max(0, input.amountPaid - totalAmount) : 0;
 
+        // Resolusi shift kasir aktif bila tidak dikirim eksplisit
+        let resolvedShiftId = input.shiftId ?? null;
+        if (!resolvedShiftId && tx.shift && typeof tx.shift.findFirst === 'function') {
+          const activeShift = await tx.shift.findFirst({
+            where: { userId: actor.userId, status: 'OPEN' },
+            orderBy: { openedAt: 'desc' },
+            select: { id: true },
+          });
+          resolvedShiftId = activeShift?.id ?? null;
+        }
+
         // Simpan transaksi
         const createdTx = await tx.transaction.create({
           data: {
             transactionNo,
-            shiftId: input.shiftId ?? null,
+            shiftId: resolvedShiftId,
             cashierId: actor.userId,
             status: 'COMPLETED',
             subtotal: new Prisma.Decimal(subtotalSum),
