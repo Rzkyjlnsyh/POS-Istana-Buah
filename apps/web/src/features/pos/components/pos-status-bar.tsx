@@ -22,12 +22,24 @@ export function PosStatusBar({
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Left: Shift & Stats */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 font-medium text-ink-primary">
-            <Clock className="h-3.5 w-3.5 text-primary-600" aria-hidden="true" />
-            <span>
-              Shift: <span className="font-semibold text-primary-700">{shiftName}</span>
-            </span>
-          </div>
+          {inRouter ? (
+            <Link
+              to="/shifts"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 font-medium text-ink-primary transition-colors hover:bg-surface-subtle hover:text-primary-700 focus-visible:outline-2 focus-visible:outline-primary-700"
+            >
+              <Clock className="h-3.5 w-3.5 text-primary-600" aria-hidden="true" />
+              <span>
+                Shift: <span className="font-semibold text-primary-700">{shiftName}</span>
+              </span>
+            </Link>
+          ) : (
+            <div className="flex items-center gap-1.5 font-medium text-ink-primary">
+              <Clock className="h-3.5 w-3.5 text-primary-600" aria-hidden="true" />
+              <span>
+                Shift: <span className="font-semibold text-primary-700">{shiftName}</span>
+              </span>
+            </div>
+          )}
 
           {inRouter ? (
             <Link
