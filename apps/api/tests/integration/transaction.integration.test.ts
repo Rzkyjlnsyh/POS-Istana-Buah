@@ -9,8 +9,10 @@ import { appConfig } from '../../src/config/app.config';
 import { authConfig } from '../../src/config/auth.config';
 import { buildDatabaseConfig } from '../../src/config/database.config';
 import { buildRedisConfig } from '../../src/config/redis.config';
+import { RedisCacheStore } from '../../src/lib/cache';
 import { createPrismaClient, disconnectDatabase } from '../../src/lib/prisma';
 import { createRedisClient, disconnectRedis } from '../../src/lib/redis';
+import { RedisRateLimitStore } from '../../src/middleware/rateLimiter';
 import {
   startEphemeralServices,
   type EphemeralServicesHandle,
@@ -100,6 +102,8 @@ describe('M03-001 Integration: Transaction API, POS Atomic Stock & Idempotency',
 
     app = createApp(appConfig, {
       prismaClient,
+      rateLimitStore: new RedisRateLimitStore(redisClient, 'm03-tx-it'),
+      cacheStore: new RedisCacheStore(redisClient, 'cache-tx-it'),
     });
 
     // Login seluruh role
@@ -273,6 +277,90 @@ describe('M03-001 Integration: Transaction API, POS Atomic Stock & Idempotency',
         .set(auth('MANAGER'));
       expect(managerView.status).toBe(200);
       expect(managerView.body.data.items[0].unitCost).not.toBeNull();
+    });
+  });
+
+  describe('GET /v1/transactions: isolasi CASHIER & filter rentang waktu (M03-008)', () => {
+    let managerTxId: string;
+
+    beforeAll(async () => {
+      const res = await request(app)
+        .post('/v1/transactions')
+        .set(auth('MANAGER'))
+        .send({
+          items: [{ productId: testWeightProductId, quantity: 0.5, unitPrice: 25000 }],
+          paymentMethod: 'QRIS',
+          amountPaid: 12500,
+        });
+      expect(res.status).toBe(201);
+      managerTxId = res.body.data.id;
+    });
+
+    it('CASHIER hanya melihat transaksinya sendiri pada list (cashierId dipaksa dari token)', async () => {
+      const res = await request(app).get('/v1/transactions?limit=100').set(auth('CASHIER'));
+      expect(res.status).toBe(200);
+      const ids = (res.body.data as Array<{ id: string; cashierName: string }>).map((t) => t.id);
+      expect(ids).not.toContain(managerTxId);
+      expect(
+        (res.body.data as Array<{ cashierName: string }>).every(
+          (t) => t.cashierName === 'Kasir POS',
+        ),
+      ).toBe(true);
+
+      // Upaya menyuntik cashierId milik orang lain tetap diabaikan
+      const managerUser = await prismaClient.user.findFirstOrThrow({
+        where: { username: 'manajer_pos' },
+      });
+      const spoof = await request(app)
+        .get(`/v1/transactions?limit=100&cashierId=${managerUser.id}`)
+        .set(auth('CASHIER'));
+      expect(spoof.status).toBe(200);
+      expect((spoof.body.data as Array<{ id: string }>).map((t) => t.id)).not.toContain(
+        managerTxId,
+      );
+    });
+
+    it('CASHIER mendapat 404 saat membuka detail transaksi milik kasir lain', async () => {
+      const res = await request(app).get(`/v1/transactions/${managerTxId}`).set(auth('CASHIER'));
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe(ERROR_CODES.TRANSACTION_NOT_FOUND);
+    });
+
+    it('MANAGER dapat melihat transaksi semua kasir dan memfilter per kasir', async () => {
+      const all = await request(app).get('/v1/transactions?limit=100').set(auth('MANAGER'));
+      expect((all.body.data as Array<{ id: string }>).map((t) => t.id)).toContain(managerTxId);
+
+      const cashierUser = await prismaClient.user.findFirstOrThrow({
+        where: { username: 'kasir_pos' },
+      });
+      const onlyCashier = await request(app)
+        .get(`/v1/transactions?limit=100&cashierId=${cashierUser.id}`)
+        .set(auth('MANAGER'));
+      expect((onlyCashier.body.data as Array<{ id: string }>).map((t) => t.id)).not.toContain(
+        managerTxId,
+      );
+    });
+
+    it('mendukung batas rentang ISO-8601 berzona (hari ini WIB) dan menolak format tidak valid', async () => {
+      const start = encodeURIComponent('2000-01-01T00:00:00+07:00');
+      const end = encodeURIComponent('2999-12-31T23:59:59.999+07:00');
+      const inRange = await request(app)
+        .get(`/v1/transactions?limit=100&startDate=${start}&endDate=${end}`)
+        .set(auth('MANAGER'));
+      expect(inRange.status).toBe(200);
+      expect((inRange.body.data as Array<{ id: string }>).map((t) => t.id)).toContain(managerTxId);
+
+      const futureStart = encodeURIComponent('2999-01-01T00:00:00+07:00');
+      const empty = await request(app)
+        .get(`/v1/transactions?startDate=${futureStart}`)
+        .set(auth('MANAGER'));
+      expect(empty.status).toBe(200);
+      expect(empty.body.data).toHaveLength(0);
+
+      const invalid = await request(app)
+        .get('/v1/transactions?startDate=bukan-tanggal')
+        .set(auth('MANAGER'));
+      expect(invalid.status).toBe(400);
     });
   });
 

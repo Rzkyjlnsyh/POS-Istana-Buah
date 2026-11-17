@@ -3,12 +3,13 @@ import express from 'express';
 import { createApp } from '../../src/app';
 import { appConfig, buildConfig } from '../../src/config/app.config';
 import { disconnectDatabase } from '../../src/lib/prisma';
-import { redis } from '../../src/lib/redis';
+import { disconnectRedis, redis } from '../../src/lib/redis';
 import { errorHandler } from '../../src/middleware/errorHandler';
 import { AppError } from '../../src/utils/app-error';
 
 afterAll(async () => {
-  redis.disconnect();
+  await disconnectRedis(redis);
+  redis.disconnect(false);
   await disconnectDatabase();
 });
 

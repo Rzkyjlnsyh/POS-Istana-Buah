@@ -39,6 +39,9 @@ export interface WebConfig {
   printerDefaultIp: string;
   printerDefaultPort: number;
   printerNetworkTimeoutMs: number;
+  storeTimezone: string;
+  storeUtcOffset: string;
+  historyPageSize: number;
 }
 
 export function buildWebConfig(env: Partial<Record<keyof ImportMetaEnv, string>>): WebConfig {
@@ -61,6 +64,9 @@ export function buildWebConfig(env: Partial<Record<keyof ImportMetaEnv, string>>
       env.VITE_PRINTER_NETWORK_TIMEOUT_MS,
       5000,
     ),
+    storeTimezone: env.VITE_STORE_TIMEZONE?.trim() || 'Asia/Jakarta',
+    storeUtcOffset: env.VITE_STORE_UTC_OFFSET?.trim() || '+07:00',
+    historyPageSize: parsePositiveInt('VITE_HISTORY_PAGE_SIZE', env.VITE_HISTORY_PAGE_SIZE, 20),
     appBrand: env.VITE_APP_BRAND?.trim() || 'Istana Buah',
     appVersion: env.VITE_APP_VERSION?.trim() || '1.0.0',
     appYear: env.VITE_APP_YEAR?.trim() || String(new Date().getFullYear()),

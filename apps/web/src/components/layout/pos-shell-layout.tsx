@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Clock,
+  History,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -8,7 +9,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { webConfig } from '../../config/app.config';
 import { logoutRequest } from '../../features/auth/api/auth-api';
 import { useNetworkStatus } from '../../hooks/use-network-status';
@@ -35,6 +36,7 @@ function formatPosClock(now: Date = new Date()): string {
  */
 export function PosShellLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const isOnline = useNetworkStatus();
 
   const user = useAuthStore((state) => state.user);
@@ -120,6 +122,19 @@ export function PosShellLayout() {
             <span className="hidden rounded-xl border border-primary-800 bg-primary-800/70 px-3 py-1.5 text-xs font-semibold text-primary-50 tabular-nums xl:inline-block">
               {clockText}
             </span>
+
+            <Link
+              to="/pos/history"
+              className={cn(
+                buttonVariants({ variant: 'headerOutline', size: 'default' }),
+                location.pathname.startsWith('/pos/history')
+                  ? 'border-white/50 bg-primary-800 text-white'
+                  : undefined,
+              )}
+            >
+              <History className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only lg:not-sr-only">Riwayat</span>
+            </Link>
 
             <Link
               to="/shifts"

@@ -8,6 +8,7 @@ import { ChangePasswordPage } from '../features/auth/pages/change-password-page'
 import { LoginPage } from '../features/auth/pages/login-page';
 import { CategoryPage } from '../features/categories/pages/category-page';
 import { PosPage } from '../features/pos/pages/pos-page';
+import { TransactionHistoryPage } from '../features/pos/pages/transaction-history-page';
 import { ProductPage } from '../features/products/pages/product-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
 import { ROLE_LABELS_ID } from './navigation-config';
@@ -75,6 +76,15 @@ export function AppRoutes() {
               </RequireRole>
             }
           />
+          <Route
+            path="/pos/history"
+            element={
+              <RequireRole allowedRoles={['OWNER', 'MANAGER', 'CASHIER']}>
+                <TransactionHistoryPage />
+              </RequireRole>
+            }
+          />
+          <Route path="/transactions" element={<Navigate to="/pos/history" replace />} />
         </Route>
 
         <Route element={<AdminLayout />}>

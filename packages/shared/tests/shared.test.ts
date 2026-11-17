@@ -471,4 +471,17 @@ describe('Transaction Validators (M03-001)', () => {
     expect(parsed.status).toBe('COMPLETED');
     expect(parsed.paymentMethod).toBe('CASH');
   });
+
+  it('transactionListQuerySchema menerima YYYY-MM-DD & ISO berzona, menolak format tidak valid', () => {
+    expect(
+      transactionListQuerySchema.safeParse({
+        startDate: '2026-11-17',
+        endDate: '2026-11-17T23:59:59.999+07:00',
+      }).success,
+    ).toBe(true);
+    expect(transactionListQuerySchema.safeParse({ startDate: 'bukan-tanggal' }).success).toBe(
+      false,
+    );
+    expect(transactionListQuerySchema.safeParse({ endDate: '2026-13-45' }).success).toBe(false);
+  });
 });
