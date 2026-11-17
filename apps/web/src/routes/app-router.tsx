@@ -10,6 +10,7 @@ import { CategoryPage } from '../features/categories/pages/category-page';
 import { PosPage } from '../features/pos/pages/pos-page';
 import { TransactionHistoryPage } from '../features/pos/pages/transaction-history-page';
 import { ProductPage } from '../features/products/pages/product-page';
+import { StockPage } from '../features/stock/pages/stock-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
 import { ROLE_LABELS_ID } from './navigation-config';
 import { RequireAuth, RequireRole } from './protected-route';
@@ -130,10 +131,7 @@ export function AppRoutes() {
             path="/stock"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
-                <ModuleWorkspaceSection
-                  title="Stok Gudang & Opname"
-                  description="Catat penerimaan barang dari supplier, stok opname fisik, dan pantau mutasi stok."
-                />
+                <StockPage />
               </RequireRole>
             }
           />
