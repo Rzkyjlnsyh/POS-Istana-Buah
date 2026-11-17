@@ -1,8 +1,15 @@
-import type { CategoryDto, PaymentMethod, ProductDto, TransactionDto } from '@istana-buah/shared';
+import type {
+  CategoryDto,
+  PaymentMethod,
+  ProductDto,
+  ShiftDto,
+  TransactionDto,
+} from '@istana-buah/shared';
 import { AlertCircle, CheckCircle2, ShoppingCart } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { getCategories } from '../../categories/api/category-api';
 import { getProductByBarcode, getProducts } from '../../products/api/product-api';
+import { getActiveShift } from '../../shifts/api/shift-api';
 import { getTransactions } from '../api/transaction-api';
 import { PosCameraScannerModal } from '../components/pos-camera-scanner-modal';
 import { PosCartSection } from '../components/pos-cart-section';
@@ -52,6 +59,7 @@ export function PosPage() {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [receiptTransaction, setReceiptTransaction] = useState<TransactionDto | null>(null);
   const [todayTransactionCount, setTodayTransactionCount] = useState<number>(0);
+  const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
 
   const addItem = usePosCartStore((state) => state.addItem);
   const updateQuantity = usePosCartStore((state) => state.updateQuantity);
@@ -119,6 +127,13 @@ export function PosPage() {
 
   useEffect(() => {
     void loadTodayTransactionCount();
+    void getActiveShift()
+      .then((shift) => {
+        if (shift) setActiveShift(shift);
+      })
+      .catch(() => {
+        // Abaikan jika offline / gagal memuat shift aktif
+      });
   }, [loadTodayTransactionCount]);
 
   useEffect(() => {
@@ -493,7 +508,7 @@ export function PosPage() {
       />
 
       {/* Bottom Status Bar */}
-      <PosStatusBar transactionCount={todayTransactionCount} />
+      <PosStatusBar shiftName={activeShift?.shiftNo} transactionCount={todayTransactionCount} />
     </div>
   );
 }

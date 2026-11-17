@@ -10,6 +10,7 @@ import { CategoryPage } from '../features/categories/pages/category-page';
 import { PosPage } from '../features/pos/pages/pos-page';
 import { TransactionHistoryPage } from '../features/pos/pages/transaction-history-page';
 import { ProductPage } from '../features/products/pages/product-page';
+import { ShiftPage } from '../features/shifts/pages/shift-page';
 import { StockPage } from '../features/stock/pages/stock-page';
 import { SupplierPage } from '../features/suppliers/pages/supplier-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
@@ -105,10 +106,7 @@ export function AppRoutes() {
             path="/shifts"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER', 'CASHIER']}>
-                <ModuleWorkspaceSection
-                  title="Shift Kasir"
-                  description="Kelola pembukaan kas awal, ringkasan transaksi shift, dan rekonsiliasi penutupan kasir."
-                />
+                <ShiftPage />
               </RequireRole>
             }
           />
