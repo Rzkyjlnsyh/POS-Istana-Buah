@@ -32,10 +32,14 @@ import {
   parseCsv,
   payPurchaseOrderSchema,
   productListQuerySchema,
+  productPerformanceQuerySchema,
   purchaseOrderListQuerySchema,
   receiveStockSchema,
   refreshTokenSchema,
+  salesExportQuerySchema,
+  salesSummaryQuerySchema,
   shiftListQuerySchema,
+  stockCurrentReportQuerySchema,
   stockMovementListQuerySchema,
   supplierListQuerySchema,
   transactionListQuerySchema,
@@ -646,5 +650,43 @@ describe('Shift Validators (M06-001)', () => {
     const parsed = shiftListQuerySchema.parse({ status: 'OPEN', page: '1', limit: '20' });
     expect(parsed.status).toBe('OPEN');
     expect(parsed.page).toBe(1);
+  });
+});
+
+describe('Report Validators (M07-001)', () => {
+  it('salesSummaryQuerySchema memvalidasi rentang tanggal dan groupBy', () => {
+    const parsed = salesSummaryQuerySchema.parse({
+      startDate: '2026-11-01',
+      endDate: '2026-11-17',
+      groupBy: 'week',
+    });
+    expect(parsed.groupBy).toBe('week');
+    expect(salesSummaryQuerySchema.parse({}).groupBy).toBe('day');
+    expect(salesSummaryQuerySchema.safeParse({ groupBy: 'hourly' }).success).toBe(false);
+  });
+
+  it('productPerformanceQuerySchema memvalidasi sortBy & batas limit', () => {
+    const parsed = productPerformanceQuerySchema.parse({ sortBy: 'qty', limit: '25' });
+    expect(parsed.sortBy).toBe('qty');
+    expect(parsed.limit).toBe(25);
+    expect(productPerformanceQuerySchema.safeParse({ limit: '500' }).success).toBe(false);
+  });
+
+  it('stockCurrentReportQuerySchema & salesExportQuerySchema memvalidasi parameter laporan & ekspor', () => {
+    const stockParsed = stockCurrentReportQuerySchema.parse({
+      lowStockOnly: 'true',
+      search: '  Mangga  ',
+    });
+    expect(stockParsed.lowStockOnly).toBe(true);
+    expect(stockParsed.search).toBe('Mangga');
+    expect(stockCurrentReportQuerySchema.safeParse({ categoryId: 'not-uuid' }).success).toBe(false);
+
+    const exportParsed = salesExportQuerySchema.parse({
+      format: 'pdf',
+      startDate: '2026-11-01',
+      endDate: '2026-11-17',
+    });
+    expect(exportParsed.format).toBe('pdf');
+    expect(salesExportQuerySchema.safeParse({ format: 'docx' }).success).toBe(false);
   });
 });

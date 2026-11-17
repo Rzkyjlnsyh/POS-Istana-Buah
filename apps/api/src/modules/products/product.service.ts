@@ -341,6 +341,7 @@ export class ProductService {
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
       this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
+      this.cache.bumpVersion(CACHE_NAMESPACES.REPORTS),
     ]);
 
     return toDto(created, actor.role);
@@ -584,6 +585,7 @@ export class ProductService {
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
       this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
+      this.cache.bumpVersion(CACHE_NAMESPACES.REPORTS),
     ]);
 
     return toDto(updated, actor.role);
@@ -622,6 +624,7 @@ export class ProductService {
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
       this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
+      this.cache.bumpVersion(CACHE_NAMESPACES.REPORTS),
     ]);
   }
 
@@ -1148,6 +1151,7 @@ export class ProductService {
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CATEGORY_CACHE_NAMESPACE),
       this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
+      this.cache.bumpVersion(CACHE_NAMESPACES.REPORTS),
     ]);
 
     return {

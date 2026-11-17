@@ -6,6 +6,7 @@ export const CACHE_NAMESPACES = {
   PRODUCTS: 'products',
   STOCK: 'stock',
   SUPPLIERS: 'suppliers',
+  REPORTS: 'reports',
 } as const;
 
 /**
