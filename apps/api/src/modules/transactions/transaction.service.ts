@@ -35,6 +35,10 @@ type FullTransactionPayload = PrismaTransaction & {
   >;
 };
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
 function parseRangeBoundary(value: string, edge: 'start' | 'end'): Date {
   // Format tanggal saja (YYYY-MM-DD) => hari UTC penuh; selain itu ISO-8601 berzona apa adanya.
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -118,16 +122,27 @@ export class TransactionService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly cache: CacheStore,
+    private readonly timezone: string = 'Asia/Jakarta',
   ) {}
 
   /**
    * Menghasilkan nomor transaksi unik per hari: TRX-YYYYMMDD-NNNN (M03-001).
+   * Menggunakan advisory lock per hari di PostgreSQL agar nomor urut aman dari race condition.
    */
   private async generateTransactionNo(date: Date, tx: Prisma.TransactionClient): Promise<string> {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const datePrefix = `TRX-${String(year)}${month}${day}-`;
+    const ymd = new Intl.DateTimeFormat('en-CA', {
+      timeZone: this.timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .format(date)
+      .replace(/-/g, '');
+    const datePrefix = `TRX-${ymd}-`;
+
+    if (typeof tx.$executeRaw === 'function') {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${datePrefix}))`;
+    }
 
     // Ambil transaksi terakhir pada hari yang sama
     const latestToday = await tx.transaction.findFirst({
@@ -153,7 +168,8 @@ export class TransactionService {
 
   /**
    * Membuat transaksi baru di kasir (M03-001).
-   * Menangani idempotency via clientId (TC-POS-003), pengurangan stok atomik, dan mutasi stok.
+   * Menangani idempotency via clientId (TC-POS-003), penguncian baris FOR UPDATE anti-race,
+   * pengurangan stok atomik, dan mutasi stok.
    */
   async create(
     input: CreateTransactionInput,
@@ -176,175 +192,232 @@ export class TransactionService {
 
     const txDate = input.transactedAt ? new Date(input.transactedAt) : new Date();
 
-    // 2. Eksekusi atomik dalam Prisma $transaction
-    const result = await this.prisma.$transaction(async (tx) => {
-      // Generate nomor transaksi berurutan
-      const transactionNo = await this.generateTransactionNo(txDate, tx);
+    // 2. Eksekusi atomik dalam Prisma $transaction (dengan advisory lock clientId + deduplikasi P2002)
+    let result: FullTransactionPayload;
+    try {
+      result = (await this.prisma.$transaction(async (tx) => {
+        // Serialisasi request dengan clientId identik agar sync ganda saat stok tersisa 0 tetap idempoten
+        if (input.clientId) {
+          if (typeof tx.$executeRaw === 'function') {
+            const clientLockKey = `tx_client_${input.clientId}`;
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${clientLockKey}))`;
+          }
+          if (typeof tx.transaction.findUnique === 'function') {
+            const existingInTx = await tx.transaction.findUnique({
+              where: { clientId: input.clientId },
+              include: {
+                cashier: { select: { id: true, fullName: true } },
+                items: true,
+              },
+            });
+            if (existingInTx) {
+              return existingInTx;
+            }
+          }
+        }
 
-      // Muat seluruh produk yang dibeli untuk validasi stok dan harga
-      const productIds = Array.from(new Set(input.items.map((it) => it.productId)));
-      const products = await tx.product.findMany({
-        where: { id: { in: productIds } },
-        select: {
-          id: true,
-          name: true,
-          productType: true,
-          costPerKg: true,
-          costPerUnit: true,
-          stockQty: true,
-          isActive: true,
-          deletedAt: true,
-        },
-      });
+        // Muat seluruh produk terurut ID dengan row lock FOR UPDATE guna mencegah negatif stok & deadlock
+        const productIds = Array.from(new Set(input.items.map((it) => it.productId))).sort();
+        if (typeof tx.$executeRaw === 'function' && productIds.length > 0) {
+          await tx.$executeRaw`SELECT id FROM products WHERE id IN (${Prisma.join(productIds)}) ORDER BY id FOR UPDATE`;
+        }
 
-      const productMap = new Map(products.map((p) => [p.id, p]));
+        // Generate nomor transaksi berurutan (setelah/dengan lock urutan harian)
+        const transactionNo = await this.generateTransactionNo(txDate, tx);
 
-      // Validasi produk & stok
-      for (const item of input.items) {
-        const prod = productMap.get(item.productId);
-        if (!prod || prod.deletedAt !== null) {
-          throw new AppError(ERROR_CODES.PRODUCT_NOT_FOUND, 'Produk tidak ditemukan', 404, {
+        const products = await tx.product.findMany({
+          where: { id: { in: productIds } },
+          select: {
+            id: true,
+            name: true,
+            productType: true,
+            costPerKg: true,
+            costPerUnit: true,
+            stockQty: true,
+            isActive: true,
+            deletedAt: true,
+          },
+        });
+
+        const productMap = new Map(products.map((p) => [p.id, p]));
+        const requestedByProduct = new Map<string, number>();
+
+        for (const item of input.items) {
+          requestedByProduct.set(
+            item.productId,
+            (requestedByProduct.get(item.productId) ?? 0) + item.quantity,
+          );
+        }
+
+        // Validasi produk & total permintaan kumulatif stok per produk
+        for (const [productId, totalRequested] of requestedByProduct.entries()) {
+          const prod = productMap.get(productId);
+          if (!prod || prod.deletedAt !== null) {
+            throw new AppError(ERROR_CODES.PRODUCT_NOT_FOUND, 'Produk tidak ditemukan', 404, {
+              productId,
+            });
+          }
+
+          if (!prod.isActive) {
+            throw new AppError(
+              ERROR_CODES.VALIDATION_ERROR,
+              `Produk "${prod.name}" sedang tidak aktif`,
+              400,
+              { productId },
+            );
+          }
+
+          const currentStock = Number(prod.stockQty);
+          if (currentStock < totalRequested) {
+            throw new AppError(
+              ERROR_CODES.INSUFFICIENT_STOCK,
+              `Stok produk "${prod.name}" tidak mencukupi (tersisa ${String(currentStock)}, diminta ${String(totalRequested)})`,
+              422,
+              {
+                productId,
+                productName: prod.name,
+                availableStock: currentStock,
+                requestedQuantity: totalRequested,
+              },
+            );
+          }
+        }
+
+        // Hitung item, kurangi stok atomik & catat mutasi
+        let subtotalSum = 0;
+        const transactionItemsData = [];
+        const runningStock = new Map<string, number>(
+          products.map((p) => [p.id, Number(p.stockQty)]),
+        );
+
+        for (const item of input.items) {
+          const prod = productMap.get(item.productId)!;
+          const lineTotal = Math.max(
+            0,
+            item.quantity * item.unitPrice - (item.discountAmount ?? 0),
+          );
+          subtotalSum += lineTotal;
+
+          const currentStock = runningStock.get(item.productId) ?? 0;
+          const newStock = currentStock - item.quantity;
+          runningStock.set(item.productId, newStock);
+
+          const unitCost =
+            prod.productType === 'WEIGHT'
+              ? (prod.costPerKg ?? new Prisma.Decimal(0))
+              : (prod.costPerUnit ?? new Prisma.Decimal(0));
+
+          transactionItemsData.push({
             productId: item.productId,
+            productName: prod.name,
+            productType: prod.productType,
+            quantity: new Prisma.Decimal(item.quantity),
+            unitPrice: new Prisma.Decimal(item.unitPrice),
+            unitCost,
+            discountAmount: new Prisma.Decimal(item.discountAmount ?? 0),
+            lineTotal: new Prisma.Decimal(lineTotal),
+          });
+
+          // Kurangi stok produk secara atomik
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQty: { decrement: new Prisma.Decimal(item.quantity) },
+            },
+          });
+
+          // Catat mutasi stok SALE_OUT
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              movementType: 'SALE_OUT',
+              quantity: new Prisma.Decimal(item.quantity),
+              balanceBefore: new Prisma.Decimal(currentStock),
+              balanceAfter: new Prisma.Decimal(newStock),
+              referenceType: 'TRANSACTION',
+              notes: `Penjualan kasir (${transactionNo})`,
+              createdBy: actor.userId,
+            },
           });
         }
 
-        if (!prod.isActive) {
-          throw new AppError(
-            ERROR_CODES.VALIDATION_ERROR,
-            `Produk "${prod.name}" sedang tidak aktif`,
-            400,
-            { productId: item.productId },
-          );
-        }
+        const totalDiscount = input.discountAmount ?? 0;
+        const totalAmount = Math.max(0, subtotalSum - totalDiscount);
+        const changeAmount =
+          input.paymentMethod === 'CASH' ? Math.max(0, input.amountPaid - totalAmount) : 0;
 
-        const currentStock = Number(prod.stockQty);
-        if (currentStock < item.quantity) {
-          throw new AppError(
-            ERROR_CODES.INSUFFICIENT_STOCK,
-            `Stok produk "${prod.name}" tidak mencukupi (tersisa ${String(currentStock)}, diminta ${String(item.quantity)})`,
-            422,
-            {
-              productId: item.productId,
-              productName: prod.name,
-              availableStock: currentStock,
-              requestedQuantity: item.quantity,
+        // Simpan transaksi
+        const createdTx = await tx.transaction.create({
+          data: {
+            transactionNo,
+            shiftId: input.shiftId ?? null,
+            cashierId: actor.userId,
+            status: 'COMPLETED',
+            subtotal: new Prisma.Decimal(subtotalSum),
+            discountAmount: new Prisma.Decimal(totalDiscount),
+            taxAmount: new Prisma.Decimal(0),
+            totalAmount: new Prisma.Decimal(totalAmount),
+            paymentMethod: input.paymentMethod,
+            amountPaid: new Prisma.Decimal(input.amountPaid),
+            changeAmount: new Prisma.Decimal(changeAmount),
+            notes: input.notes ?? null,
+            clientId: input.clientId ?? null,
+            transactedAt: txDate,
+            items: {
+              create: transactionItemsData,
             },
-          );
+          },
+          include: {
+            cashier: { select: { id: true, fullName: true } },
+            items: true,
+          },
+        });
+
+        // Update referenceId pada mutasi stok yang baru saja dibuat
+        await tx.stockMovement.updateMany({
+          where: {
+            notes: `Penjualan kasir (${transactionNo})`,
+            referenceType: 'TRANSACTION',
+            referenceId: null,
+          },
+          data: {
+            referenceId: createdTx.id,
+          },
+        });
+
+        // Catat log audit transaksi POS
+        await recordAuditLog(tx, {
+          userId: actor.userId,
+          action: 'TRANSACTION_CREATED',
+          entity: TRANSACTION_ENTITY,
+          entityId: createdTx.id,
+          newValues: {
+            transactionNo,
+            totalAmount,
+            itemCount: input.items.length,
+            paymentMethod: input.paymentMethod,
+          },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent,
+        });
+
+        return createdTx;
+      })) as FullTransactionPayload;
+    } catch (err) {
+      if (input.clientId && isUniqueConstraintError(err)) {
+        const winner = await this.prisma.transaction.findUnique({
+          where: { clientId: input.clientId },
+          include: {
+            cashier: { select: { id: true, fullName: true } },
+            items: true,
+          },
+        });
+        if (winner) {
+          return toTransactionDto(winner as FullTransactionPayload, actor.role);
         }
       }
-
-      // Hitung item & total
-      let subtotalSum = 0;
-      const transactionItemsData = [];
-
-      for (const item of input.items) {
-        const prod = productMap.get(item.productId)!;
-        const lineTotal = Math.max(0, item.quantity * item.unitPrice - (item.discountAmount ?? 0));
-        subtotalSum += lineTotal;
-
-        const currentStock = Number(prod.stockQty);
-        const newStock = currentStock - item.quantity;
-        const unitCost =
-          prod.productType === 'WEIGHT'
-            ? (prod.costPerKg ?? new Prisma.Decimal(0))
-            : (prod.costPerUnit ?? new Prisma.Decimal(0));
-
-        transactionItemsData.push({
-          productId: item.productId,
-          productName: prod.name,
-          productType: prod.productType,
-          quantity: new Prisma.Decimal(item.quantity),
-          unitPrice: new Prisma.Decimal(item.unitPrice),
-          unitCost,
-          discountAmount: new Prisma.Decimal(item.discountAmount ?? 0),
-          lineTotal: new Prisma.Decimal(lineTotal),
-        });
-
-        // Kurangi stok produk secara atomik
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stockQty: { decrement: new Prisma.Decimal(item.quantity) },
-          },
-        });
-
-        // Catat mutasi stok SALE_OUT
-        await tx.stockMovement.create({
-          data: {
-            productId: item.productId,
-            movementType: 'SALE_OUT',
-            quantity: new Prisma.Decimal(item.quantity),
-            balanceBefore: new Prisma.Decimal(currentStock),
-            balanceAfter: new Prisma.Decimal(newStock),
-            referenceType: 'TRANSACTION',
-            notes: `Penjualan kasir (${transactionNo})`,
-            createdBy: actor.userId,
-          },
-        });
-      }
-
-      const totalDiscount = input.discountAmount ?? 0;
-      const totalAmount = Math.max(0, subtotalSum - totalDiscount);
-      const changeAmount =
-        input.paymentMethod === 'CASH' ? Math.max(0, input.amountPaid - totalAmount) : 0;
-
-      // Simpan transaksi
-      const createdTx = await tx.transaction.create({
-        data: {
-          transactionNo,
-          shiftId: input.shiftId ?? null,
-          cashierId: actor.userId,
-          status: 'COMPLETED',
-          subtotal: new Prisma.Decimal(subtotalSum),
-          discountAmount: new Prisma.Decimal(totalDiscount),
-          taxAmount: new Prisma.Decimal(0),
-          totalAmount: new Prisma.Decimal(totalAmount),
-          paymentMethod: input.paymentMethod,
-          amountPaid: new Prisma.Decimal(input.amountPaid),
-          changeAmount: new Prisma.Decimal(changeAmount),
-          notes: input.notes ?? null,
-          clientId: input.clientId ?? null,
-          transactedAt: txDate,
-          items: {
-            create: transactionItemsData,
-          },
-        },
-        include: {
-          cashier: { select: { id: true, fullName: true } },
-          items: true,
-        },
-      });
-
-      // Update referenceId pada mutasi stok yang baru saja dibuat
-      await tx.stockMovement.updateMany({
-        where: {
-          notes: `Penjualan kasir (${transactionNo})`,
-          referenceType: 'TRANSACTION',
-          referenceId: null,
-        },
-        data: {
-          referenceId: createdTx.id,
-        },
-      });
-
-      // Catat log audit transaksi POS
-      await recordAuditLog(tx, {
-        userId: actor.userId,
-        action: 'TRANSACTION_CREATED',
-        entity: TRANSACTION_ENTITY,
-        entityId: createdTx.id,
-        newValues: {
-          transactionNo,
-          totalAmount,
-          itemCount: input.items.length,
-          paymentMethod: input.paymentMethod,
-        },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent,
-      });
-
-      return createdTx;
-    });
+      throw err;
+    }
 
     // Invalidate Redis product cache agar stok real-time terpantau
     await this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE);
@@ -492,6 +565,37 @@ export class TransactionService {
     const voidedAt = new Date();
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      // Kunci baris transaksi & produk terkait (FOR UPDATE) agar double-void paralel mustahil terjadi
+      if (typeof tx.$executeRaw === 'function') {
+        await tx.$executeRaw`SELECT id FROM transactions WHERE id = ${id} FOR UPDATE`;
+        const sortedVoidProductIds = Array.from(
+          new Set(existing.items.map((it) => it.productId)),
+        ).sort();
+        if (sortedVoidProductIds.length > 0) {
+          await tx.$executeRaw`SELECT id FROM products WHERE id IN (${Prisma.join(sortedVoidProductIds)}) ORDER BY id FOR UPDATE`;
+        }
+      }
+
+      if (typeof tx.transaction.findUnique === 'function') {
+        const fresh = await tx.transaction.findUnique({
+          where: { id },
+          select: { status: true },
+        });
+        if (!fresh) {
+          throw new AppError(ERROR_CODES.TRANSACTION_NOT_FOUND, 'Transaksi tidak ditemukan', 404, {
+            id,
+          });
+        }
+        if (fresh.status === 'VOIDED') {
+          throw new AppError(
+            ERROR_CODES.TRANSACTION_ALREADY_VOIDED,
+            'Transaksi ini sudah dibatalkan sebelumnya',
+            400,
+            { id },
+          );
+        }
+      }
+
       // 1. Update status transaksi menjadi VOIDED
       const voidedTx = await tx.transaction.update({
         where: { id },
