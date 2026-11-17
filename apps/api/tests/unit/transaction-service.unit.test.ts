@@ -424,11 +424,48 @@ describe('M03-001 Unit: TransactionService', () => {
         endDate: '2026-11-08',
       },
       cashierActor.role,
+      cashierActor.userId,
     );
 
     expect(result.items).toHaveLength(1);
     expect(result.meta.total).toBe(1);
     expect(result.items[0]?.transactionNo).toBe('TRX-20261108-0001');
+
+    // CASHIER selalu dibatasi ke transaksinya sendiri
+    const findMany = (prisma.transaction as unknown as { findMany: jest.Mock }).findMany;
+    expect(findMany.mock.calls[0]?.[0].where.cashierId).toBe(cashierActor.userId);
+  });
+
+  it('list: CASHIER mengabaikan cashierId filter orang lain; MANAGER boleh memfilter; ISO berzona diparse apa adanya', async () => {
+    const cache = new InMemoryCacheStore();
+    const prisma = {
+      transaction: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    } as unknown as PrismaClient;
+    const service = new TransactionService(prisma, cache);
+    const findMany = (prisma.transaction as unknown as { findMany: jest.Mock }).findMany;
+
+    await service.list({ page: 1, limit: 20, cashierId: 'other-user' }, 'CASHIER', 'me');
+    expect(findMany.mock.calls[0]?.[0].where.cashierId).toBe('me');
+
+    await service.list({ page: 1, limit: 20, cashierId: 'other-user' }, 'MANAGER', 'mgr');
+    expect(findMany.mock.calls[1]?.[0].where.cashierId).toBe('other-user');
+
+    await service.list(
+      {
+        page: 1,
+        limit: 20,
+        startDate: '2026-11-17T00:00:00+07:00',
+        endDate: '2026-11-17T23:59:59.999+07:00',
+      },
+      'OWNER',
+      'own',
+    );
+    const range = findMany.mock.calls[2]?.[0].where.transactedAt;
+    expect(range.gte.toISOString()).toBe('2026-11-16T17:00:00.000Z');
+    expect(range.lte.toISOString()).toBe('2026-11-17T16:59:59.999Z');
   });
 
   it('getById melempar 404 NOT_FOUND jika transaksi tidak ada', async () => {
@@ -439,9 +476,49 @@ describe('M03-001 Unit: TransactionService', () => {
 
     const service = new TransactionService(prisma, cache);
 
-    await expect(service.getById('tx-unknown', 'CASHIER')).rejects.toMatchObject({
+    await expect(service.getById('tx-unknown', 'CASHIER', 'me')).rejects.toMatchObject({
       statusCode: 404,
       code: ERROR_CODES.TRANSACTION_NOT_FOUND,
     });
+  });
+
+  it('getById: CASHIER mendapat 404 untuk transaksi kasir lain, MANAGER boleh membuka', async () => {
+    const cache = new InMemoryCacheStore();
+    const foreignTx = {
+      id: 'tx-foreign',
+      transactionNo: 'TRX-20261108-0099',
+      shiftId: null,
+      cashierId: 'someone-else',
+      status: 'COMPLETED',
+      subtotal: new Prisma.Decimal(1000),
+      discountAmount: new Prisma.Decimal(0),
+      taxAmount: new Prisma.Decimal(0),
+      totalAmount: new Prisma.Decimal(1000),
+      paymentMethod: 'CASH',
+      amountPaid: new Prisma.Decimal(1000),
+      changeAmount: new Prisma.Decimal(0),
+      notes: null,
+      voidedBy: null,
+      voidedAt: null,
+      voidReason: null,
+      clientId: null,
+      syncedAt: null,
+      transactedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      cashier: { id: 'someone-else', fullName: 'Orang Lain' },
+      items: [],
+    };
+    const prisma = {
+      transaction: { findUnique: jest.fn().mockResolvedValue(foreignTx) },
+    } as unknown as PrismaClient;
+    const service = new TransactionService(prisma, cache);
+
+    await expect(service.getById('tx-foreign', 'CASHIER', 'me')).rejects.toMatchObject({
+      statusCode: 404,
+      code: ERROR_CODES.TRANSACTION_NOT_FOUND,
+    });
+    const asManager = await service.getById('tx-foreign', 'MANAGER', 'mgr');
+    expect(asManager.id).toBe('tx-foreign');
   });
 });

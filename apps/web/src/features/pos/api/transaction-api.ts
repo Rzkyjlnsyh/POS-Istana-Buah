@@ -5,6 +5,7 @@ import type {
   TransactionListQuery,
   TransactionListResponse,
 } from '@istana-buah/shared';
+import { webConfig } from '../../../config/app.config';
 import { apiClient } from '../../../lib/api/http-client';
 
 /**
@@ -19,7 +20,7 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
  * Mengambil daftar riwayat transaksi dengan filter (M03-001 / M03-008).
  */
 export async function getTransactions(
-  params?: TransactionListQuery,
+  params?: Partial<TransactionListQuery>,
 ): Promise<TransactionListResponse> {
   const queryParams: Record<string, string> = {};
 
@@ -30,6 +31,8 @@ export async function getTransactions(
   if (params?.status) queryParams.status = params.status;
   if (params?.paymentMethod) queryParams.paymentMethod = params.paymentMethod;
   if (params?.cashierId) queryParams.cashierId = params.cashierId;
+  if (params?.shiftId) queryParams.shiftId = params.shiftId;
+  if (params?.search?.trim()) queryParams.search = params.search.trim();
 
   const response = await apiClient.get<ApiSuccess<TransactionDto[]>>('/transactions', {
     params: queryParams,
@@ -39,7 +42,7 @@ export async function getTransactions(
     items: response.data.data,
     meta: response.data.meta ?? {
       page: params?.page ?? 1,
-      limit: params?.limit ?? 20,
+      limit: params?.limit ?? webConfig.historyPageSize,
       total: response.data.data.length,
     },
   };

@@ -79,6 +79,11 @@ describe('Protected Routes & Role Guards (M01-004)', () => {
     const posAxe = await axe.run(container);
     expect(posAxe.violations).toHaveLength(0);
 
+    await user.click(screen.getByRole('link', { name: /^Riwayat$/i }));
+    expect(await screen.findByRole('heading', { name: 'Riwayat Transaksi' })).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: /Kembali ke Kasir/i }));
+    expect(await screen.findByRole('heading', { name: 'Layar Kasir (POS)' })).toBeInTheDocument();
+
     await user.click(screen.getByRole('link', { name: /Shift Kasir/i }));
     expect(await screen.findByRole('heading', { name: 'Shift Kasir' })).toBeInTheDocument();
   });

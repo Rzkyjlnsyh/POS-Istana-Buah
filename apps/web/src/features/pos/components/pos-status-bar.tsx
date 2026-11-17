@@ -1,4 +1,5 @@
 import { Clock, HelpCircle, Layers, RefreshCw } from 'lucide-react';
+import { Link, useInRouterContext } from 'react-router';
 
 export interface PosStatusBarProps {
   shiftName?: string;
@@ -11,6 +12,8 @@ export function PosStatusBar({
   transactionCount = 0,
   syncQueueCount = 0,
 }: PosStatusBarProps) {
+  const inRouter = useInRouterContext();
+
   return (
     <footer
       aria-label="Status kasir dan petunjuk pintasan keyboard"
@@ -26,13 +29,30 @@ export function PosStatusBar({
             </span>
           </div>
 
-          <div className="hidden items-center gap-1.5 sm:flex">
-            <Layers className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />
-            <span>
-              Transaksi Hari Ini:{' '}
-              <span className="font-semibold text-ink-primary">{transactionCount}</span>
-            </span>
-          </div>
+          {inRouter ? (
+            <Link
+              to="/pos/history"
+              className="hidden min-h-11 items-center gap-1.5 rounded-lg px-2 text-ink-secondary transition-colors hover:bg-surface-subtle hover:text-primary-700 focus-visible:outline-2 focus-visible:outline-primary-700 sm:inline-flex"
+            >
+              <Layers className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />
+              <span>
+                Transaksi Hari Ini:{' '}
+                <span className="font-semibold text-ink-primary tabular-nums">
+                  {transactionCount}
+                </span>
+              </span>
+            </Link>
+          ) : (
+            <div className="hidden items-center gap-1.5 sm:flex">
+              <Layers className="h-3.5 w-3.5 text-ink-muted" aria-hidden="true" />
+              <span>
+                Transaksi Hari Ini:{' '}
+                <span className="font-semibold text-ink-primary tabular-nums">
+                  {transactionCount}
+                </span>
+              </span>
+            </div>
+          )}
 
           {syncQueueCount > 0 ? (
             <div className="flex items-center gap-1.5 text-semantic-warning-ink">

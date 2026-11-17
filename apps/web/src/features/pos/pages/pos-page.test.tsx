@@ -119,6 +119,10 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
     usePosCartStore.getState().clearCart();
 
     vi.mocked(categoryApi.getCategories).mockResolvedValue([...mockCategories]);
+    vi.mocked(transactionApi.getTransactions).mockResolvedValue({
+      items: [],
+      meta: { page: 1, limit: 1, total: 3 },
+    });
     vi.mocked(productApi.getProducts).mockImplementation(async (params) => {
       let filtered = [...mockProducts];
       if (params?.categoryId) {
@@ -180,6 +184,9 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
     const statusBar = screen.getByRole('contentinfo', { name: /status kasir/i });
     expect(statusBar).toBeInTheDocument();
     expect(within(statusBar).getByText(/shift 1 \(pagi\)/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(statusBar).getByText('3')).toBeInTheDocument();
+    });
     expect(within(statusBar).getByText('F1')).toBeInTheDocument();
   });
 

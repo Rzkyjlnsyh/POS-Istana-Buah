@@ -38,10 +38,11 @@ export class TransactionController {
   };
 
   list = async (req: Request, res: Response): Promise<void> => {
-    const role = req.authUser?.role ?? 'CASHIER';
+    const actor = buildActor(req);
     const result = await this.transactionService.list(
       req.validatedQuery as TransactionListQuery,
-      role,
+      actor.role,
+      actor.userId,
     );
     res.status(200).json({
       success: true,
@@ -51,9 +52,9 @@ export class TransactionController {
   };
 
   getById = async (req: Request, res: Response): Promise<void> => {
-    const role = req.authUser?.role ?? 'CASHIER';
+    const actor = buildActor(req);
     const { id } = req.params as unknown as TransactionIdParam;
-    const data = await this.transactionService.getById(id, role);
+    const data = await this.transactionService.getById(id, actor.role, actor.userId);
     res.status(200).json({
       success: true,
       data,

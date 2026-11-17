@@ -35,6 +35,14 @@ type FullTransactionPayload = PrismaTransaction & {
   >;
 };
 
+function parseRangeBoundary(value: string, edge: 'start' | 'end'): Date {
+  // Format tanggal saja (YYYY-MM-DD) => hari UTC penuh; selain itu ISO-8601 berzona apa adanya.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(edge === 'start' ? `${value}T00:00:00.000Z` : `${value}T23:59:59.999Z`);
+  }
+  return new Date(value);
+}
+
 function buildReceiptData(tx: FullTransactionPayload): ReceiptDataDto {
   return {
     storeName: STORE_NAME,
@@ -346,8 +354,14 @@ export class TransactionService {
 
   /**
    * Mengambil daftar transaksi dengan filter dan paginasi (M03-001).
+   * CASHIER hanya boleh melihat transaksinya sendiri (least privilege);
+   * OWNER/MANAGER dapat melihat semua serta memfilter per kasir.
    */
-  async list(query: TransactionListQuery, role: UserRole): Promise<TransactionListResponse> {
+  async list(
+    query: TransactionListQuery,
+    role: UserRole,
+    actorUserId: string,
+  ): Promise<TransactionListResponse> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
@@ -360,7 +374,9 @@ export class TransactionService {
     if (query.paymentMethod) {
       where.paymentMethod = query.paymentMethod;
     }
-    if (query.cashierId) {
+    if (role === 'CASHIER') {
+      where.cashierId = actorUserId;
+    } else if (query.cashierId) {
       where.cashierId = query.cashierId;
     }
     if (query.shiftId) {
@@ -370,10 +386,10 @@ export class TransactionService {
     if (query.startDate || query.endDate) {
       where.transactedAt = {};
       if (query.startDate) {
-        where.transactedAt.gte = new Date(`${query.startDate}T00:00:00.000Z`);
+        where.transactedAt.gte = parseRangeBoundary(query.startDate, 'start');
       }
       if (query.endDate) {
-        where.transactedAt.lte = new Date(`${query.endDate}T23:59:59.999Z`);
+        where.transactedAt.lte = parseRangeBoundary(query.endDate, 'end');
       }
     }
 
@@ -412,8 +428,9 @@ export class TransactionService {
 
   /**
    * Mengambil detail satu transaksi berdasarkan ID (M03-001).
+   * CASHIER hanya dapat membuka transaksinya sendiri (selain itu dijawab 404 agar tidak membocorkan keberadaan).
    */
-  async getById(id: string, role: UserRole): Promise<TransactionDto> {
+  async getById(id: string, role: UserRole, actorUserId: string): Promise<TransactionDto> {
     const tx = await this.prisma.transaction.findUnique({
       where: { id },
       include: {
@@ -422,7 +439,7 @@ export class TransactionService {
       },
     });
 
-    if (!tx) {
+    if (!tx || (role === 'CASHIER' && tx.cashierId !== actorUserId)) {
       throw new AppError(ERROR_CODES.TRANSACTION_NOT_FOUND, 'Transaksi tidak ditemukan', 404, {
         id,
       });

@@ -17,6 +17,9 @@ interface ImportMetaEnv {
   readonly VITE_PRINTER_DEFAULT_IP?: string;
   readonly VITE_PRINTER_DEFAULT_PORT?: string;
   readonly VITE_PRINTER_NETWORK_TIMEOUT_MS?: string;
+  readonly VITE_STORE_TIMEZONE?: string;
+  readonly VITE_STORE_UTC_OFFSET?: string;
+  readonly VITE_HISTORY_PAGE_SIZE?: string;
 }
 
 interface ImportMeta {

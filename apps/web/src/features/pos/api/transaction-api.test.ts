@@ -48,10 +48,26 @@ describe('transaction-api (M03-006)', () => {
       },
     });
 
-    const result = await getTransactions({ page: 1, limit: 10, paymentMethod: 'QRIS' });
+    const result = await getTransactions({
+      page: 1,
+      limit: 10,
+      paymentMethod: 'QRIS',
+      status: 'COMPLETED',
+      search: ' TRX-2026 ',
+      startDate: '2026-11-17T00:00:00+07:00',
+      endDate: '2026-11-17T23:59:59.999+07:00',
+    });
 
     expect(apiClient.get).toHaveBeenCalledWith('/transactions', {
-      params: { page: '1', limit: '10', paymentMethod: 'QRIS' },
+      params: {
+        page: '1',
+        limit: '10',
+        paymentMethod: 'QRIS',
+        status: 'COMPLETED',
+        search: 'TRX-2026',
+        startDate: '2026-11-17T00:00:00+07:00',
+        endDate: '2026-11-17T23:59:59.999+07:00',
+      },
     });
     expect(result.items).toEqual(mockList);
     expect(result.meta.total).toBe(1);

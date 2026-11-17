@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, ShoppingCart } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { getCategories } from '../../categories/api/category-api';
 import { getProductByBarcode, getProducts } from '../../products/api/product-api';
+import { getTransactions } from '../api/transaction-api';
 import { PosCameraScannerModal } from '../components/pos-camera-scanner-modal';
 import { PosCartSection } from '../components/pos-cart-section';
 import { PosPaymentModal } from '../components/pos-payment-modal';
@@ -13,7 +14,7 @@ import { PosStatusBar } from '../components/pos-status-bar';
 import { PosWeightModal } from '../components/pos-weight-modal';
 import { useUsbBarcodeScanner } from '../hooks/use-usb-barcode-scanner';
 import { type PosCartItem, usePosCartStore } from '../stores/pos-cart-store';
-import { formatRupiah } from '../utils/formatters';
+import { formatRupiah, getTodayStoreRange } from '../utils/formatters';
 import { scannerSound } from '../utils/scanner-sound';
 
 export function PosPage() {
@@ -50,6 +51,7 @@ export function PosPage() {
   const [completedTransaction, setCompletedTransaction] = useState<TransactionDto | null>(null);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [receiptTransaction, setReceiptTransaction] = useState<TransactionDto | null>(null);
+  const [todayTransactionCount, setTodayTransactionCount] = useState<number>(0);
 
   const addItem = usePosCartStore((state) => state.addItem);
   const updateQuantity = usePosCartStore((state) => state.updateQuantity);
@@ -97,6 +99,27 @@ export function PosPage() {
   useEffect(() => {
     void loadCategories();
   }, [loadCategories]);
+
+  const loadTodayTransactionCount = useCallback(async () => {
+    try {
+      const range = getTodayStoreRange();
+      const res = await getTransactions({
+        page: 1,
+        limit: 1,
+        startDate: range.startDate,
+        endDate: range.endDate,
+      });
+      if (res?.meta && typeof res.meta.total === 'number') {
+        setTodayTransactionCount(res.meta.total);
+      }
+    } catch {
+      // Abaikan jika offline / gagal memuat jumlah transaksi
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTodayTransactionCount();
+  }, [loadTodayTransactionCount]);
 
   useEffect(() => {
     if (!searchQuery) {
@@ -237,6 +260,7 @@ export function PosPage() {
     (transaction: TransactionDto) => {
       setCompletedTransaction(transaction);
       setIsSuccessModalOpen(true);
+      setTodayTransactionCount((prev) => prev + 1);
       clearCart();
       showNotification('success', `Transaksi ${transaction.transactionNo} berhasil disimpan!`);
     },
@@ -469,7 +493,7 @@ export function PosPage() {
       />
 
       {/* Bottom Status Bar */}
-      <PosStatusBar />
+      <PosStatusBar transactionCount={todayTransactionCount} />
     </div>
   );
 }
