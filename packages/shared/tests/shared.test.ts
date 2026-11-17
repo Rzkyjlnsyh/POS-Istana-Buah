@@ -17,6 +17,7 @@ import {
   changePasswordSchema,
   createProductSchema,
   createStockOpnameSchema,
+  createSupplierSchema,
   createTransactionSchema,
   generateBarcodeQuerySchema,
   generateProductCsvTemplate,
@@ -30,8 +31,10 @@ import {
   receiveStockSchema,
   refreshTokenSchema,
   stockMovementListQuerySchema,
+  supplierListQuerySchema,
   transactionListQuerySchema,
   updateProductSchema,
+  updateSupplierSchema,
   voidTransactionSchema,
 } from '../src';
 
@@ -551,5 +554,26 @@ describe('Stock Validators (M04-001)', () => {
     const lowQuery = lowStockAlertQuerySchema.parse({ search: 'Mangga', limit: '50' });
     expect(lowQuery.search).toBe('Mangga');
     expect(lowQuery.limit).toBe(50);
+  });
+});
+
+describe('Supplier Validators (M05-001)', () => {
+  it('createSupplierSchema, updateSupplierSchema & supplierListQuerySchema memvalidasi input supplier', () => {
+    const created = createSupplierSchema.parse({
+      name: '  CV Agro Segar  ',
+      contactPerson: '  ',
+      phoneNumber: '08123456789',
+    });
+    expect(created.name).toBe('CV Agro Segar');
+    expect(created.contactPerson).toBeNull();
+
+    expect(createSupplierSchema.safeParse({ name: 'A' }).success).toBe(false);
+    expect(updateSupplierSchema.safeParse({}).success).toBe(false);
+    expect(updateSupplierSchema.safeParse({ isActive: false }).success).toBe(true);
+
+    const query = supplierListQuerySchema.parse({ search: 'Agro', isActive: 'true', limit: '25' });
+    expect(query.search).toBe('Agro');
+    expect(query.isActive).toBe(true);
+    expect(query.limit).toBe(25);
   });
 });
