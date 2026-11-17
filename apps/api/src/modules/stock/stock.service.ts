@@ -432,6 +432,9 @@ export class StockService {
       });
 
     await this.bustInventoryCaches();
+    if (resolvedSupplierId || purchaseOrderId) {
+      await this.cache.bumpVersion(CACHE_NAMESPACES.SUPPLIERS);
+    }
 
     const userNames = await this.resolveUserNames([actor.userId]);
     return {
