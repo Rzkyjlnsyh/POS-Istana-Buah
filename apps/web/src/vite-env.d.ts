@@ -11,6 +11,12 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_STORAGE_KEY?: string;
   readonly VITE_OFFLINE_SYNC_INTERVAL: string;
   readonly VITE_PRODUCT_CACHE_TTL: string;
+  readonly VITE_STORE_ADDRESS?: string;
+  readonly VITE_STORE_PHONE?: string;
+  readonly VITE_RECEIPT_FOOTER?: string;
+  readonly VITE_PRINTER_DEFAULT_IP?: string;
+  readonly VITE_PRINTER_DEFAULT_PORT?: string;
+  readonly VITE_PRINTER_NETWORK_TIMEOUT_MS?: string;
 }
 
 interface ImportMeta {

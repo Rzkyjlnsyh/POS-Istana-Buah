@@ -598,6 +598,17 @@ describe('PosPage (M03-002) POS Layout, 2-Panel Responsiveness & Cart Interactio
       expect(screen.getByText('TRX-20261108-0100')).toBeInTheDocument();
     });
 
+    // Cetak struk membuka modal pratinjau ESC/POS (M03-007)
+    await user.click(screen.getByRole('button', { name: /cetak struk/i }));
+    expect(
+      await screen.findByRole('heading', { name: /pratinjau & cetak struk kasir/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('thermal-receipt-paper')).toHaveTextContent('TRX-20261108-0100');
+    await user.click(screen.getByRole('button', { name: /tutup dialog/i }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('thermal-receipt-paper')).not.toBeInTheDocument();
+    });
+
     // Klik Transaksi Baru
     const newTxBtn = screen.getByRole('button', { name: /transaksi baru/i });
     await user.click(newTxBtn);
