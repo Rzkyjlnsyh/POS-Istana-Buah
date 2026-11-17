@@ -420,6 +420,7 @@ export class TransactionService {
     await Promise.all([
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
+      this.cache.bumpVersion(CACHE_NAMESPACES.REPORTS),
     ]);
 
     return toTransactionDto(result as FullTransactionPayload, actor.role);
@@ -666,6 +667,7 @@ export class TransactionService {
     await Promise.all([
       this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
       this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
+      this.cache.bumpVersion(CACHE_NAMESPACES.REPORTS),
     ]);
 
     return toTransactionDto(updated as FullTransactionPayload, actor.role);

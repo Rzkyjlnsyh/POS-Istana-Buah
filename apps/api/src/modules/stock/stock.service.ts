@@ -130,6 +130,7 @@ export class StockService {
     await Promise.all([
       this.cache.bumpVersion(CACHE_NAMESPACES.PRODUCTS),
       this.cache.bumpVersion(STOCK_CACHE_NAMESPACE),
+      this.cache.bumpVersion(CACHE_NAMESPACES.REPORTS),
     ]);
   }
 
