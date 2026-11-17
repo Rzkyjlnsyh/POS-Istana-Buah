@@ -5,9 +5,10 @@ import {
   type Transaction as PrismaTransaction,
   type TransactionItem as PrismaTransactionItem,
 } from '@prisma/client';
-import type { CacheStore } from '../../lib/cache';
+import { CACHE_NAMESPACES, type CacheStore } from '../../lib/cache';
 import { AppError } from '../../utils/app-error';
 import { recordAuditLog } from '../../utils/audit-logger';
+import { formatYmdInTimeZone, parseRangeBoundary } from '../../utils/date-helpers';
 import { PRODUCT_CACHE_NAMESPACE } from '../products/product.service';
 import type {
   CreateTransactionInput,
@@ -37,14 +38,6 @@ type FullTransactionPayload = PrismaTransaction & {
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
-}
-
-function parseRangeBoundary(value: string, edge: 'start' | 'end'): Date {
-  // Format tanggal saja (YYYY-MM-DD) => hari UTC penuh; selain itu ISO-8601 berzona apa adanya.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(edge === 'start' ? `${value}T00:00:00.000Z` : `${value}T23:59:59.999Z`);
-  }
-  return new Date(value);
 }
 
 function buildReceiptData(tx: FullTransactionPayload): ReceiptDataDto {
@@ -130,14 +123,7 @@ export class TransactionService {
    * Menggunakan advisory lock per hari di PostgreSQL agar nomor urut aman dari race condition.
    */
   private async generateTransactionNo(date: Date, tx: Prisma.TransactionClient): Promise<string> {
-    const ymd = new Intl.DateTimeFormat('en-CA', {
-      timeZone: this.timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-      .format(date)
-      .replace(/-/g, '');
+    const ymd = formatYmdInTimeZone(date, this.timezone);
     const datePrefix = `TRX-${ymd}-`;
 
     if (typeof tx.$executeRaw === 'function') {
@@ -419,8 +405,11 @@ export class TransactionService {
       throw err;
     }
 
-    // Invalidate Redis product cache agar stok real-time terpantau
-    await this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE);
+    // Invalidate Redis product & stock cache agar stok real-time terpantau
+    await Promise.all([
+      this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
+      this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
+    ]);
 
     return toTransactionDto(result as FullTransactionPayload, actor.role);
   }
@@ -662,8 +651,11 @@ export class TransactionService {
       return voidedTx;
     });
 
-    // Invalidate product cache
-    await this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE);
+    // Invalidate product & stock cache
+    await Promise.all([
+      this.cache.bumpVersion(PRODUCT_CACHE_NAMESPACE),
+      this.cache.bumpVersion(CACHE_NAMESPACES.STOCK),
+    ]);
 
     return toTransactionDto(updated as FullTransactionPayload, actor.role);
   }

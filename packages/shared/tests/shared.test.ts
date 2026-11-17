@@ -16,16 +16,20 @@ import {
   categoryListQuerySchema,
   changePasswordSchema,
   createProductSchema,
+  createStockOpnameSchema,
   createTransactionSchema,
   generateBarcodeQuerySchema,
   generateProductCsvTemplate,
   isValidEan13,
   loginSchema,
   logoutSchema,
+  lowStockAlertQuerySchema,
   paginationQuerySchema,
   parseCsv,
   productListQuerySchema,
+  receiveStockSchema,
   refreshTokenSchema,
+  stockMovementListQuerySchema,
   transactionListQuerySchema,
   updateProductSchema,
   voidTransactionSchema,
@@ -483,5 +487,69 @@ describe('Transaction Validators (M03-001)', () => {
       false,
     );
     expect(transactionListQuerySchema.safeParse({ endDate: '2026-13-45' }).success).toBe(false);
+  });
+});
+
+describe('Stock Validators (M04-001)', () => {
+  const validProductId = '123e4567-e89b-12d3-a456-426614174000';
+  const validSupplierId = '223e4567-e89b-12d3-a456-426614174000';
+
+  it('receiveStockSchema memvalidasi penerimaan stok dan menolak item kosong/qty <= 0', () => {
+    expect(
+      receiveStockSchema.safeParse({
+        supplierId: validSupplierId,
+        items: [{ productId: validProductId, quantity: 20, unitCost: 18000 }],
+        notes: 'Penerimaan pagi',
+      }).success,
+    ).toBe(true);
+
+    expect(receiveStockSchema.safeParse({ items: [] }).success).toBe(false);
+    expect(
+      receiveStockSchema.safeParse({
+        items: [{ productId: validProductId, quantity: 0 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      receiveStockSchema.safeParse({
+        items: [{ productId: validProductId, quantity: 5, unitCost: -1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('createStockOpnameSchema memvalidasi qty fisik >= 0 dan menolak produk duplikat', () => {
+    const valid = createStockOpnameSchema.parse({
+      items: [{ productId: validProductId, physicalQty: 0 }],
+      notes: 'Opname akhir bulan',
+    });
+    expect(valid.finalize).toBe(true);
+
+    expect(
+      createStockOpnameSchema.safeParse({
+        items: [
+          { productId: validProductId, physicalQty: 5 },
+          { productId: validProductId, physicalQty: 6 },
+        ],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createStockOpnameSchema.safeParse({
+        items: [{ productId: validProductId, physicalQty: -0.5 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('stockMovementListQuerySchema & lowStockAlertQuerySchema memvalidasi query filter stok', () => {
+    const movQuery = stockMovementListQuerySchema.parse({
+      productId: validProductId,
+      type: 'PURCHASE_IN',
+      startDate: '2026-11-17T00:00:00+07:00',
+    });
+    expect(movQuery.type).toBe('PURCHASE_IN');
+    expect(stockMovementListQuerySchema.safeParse({ type: 'INVALID_TYPE' }).success).toBe(false);
+
+    const lowQuery = lowStockAlertQuerySchema.parse({ search: 'Mangga', limit: '50' });
+    expect(lowQuery.search).toBe('Mangga');
+    expect(lowQuery.limit).toBe(50);
   });
 });
