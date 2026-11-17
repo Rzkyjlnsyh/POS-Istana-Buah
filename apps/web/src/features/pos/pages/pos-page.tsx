@@ -8,6 +8,7 @@ import { PosCartSection } from '../components/pos-cart-section';
 import { PosPaymentModal } from '../components/pos-payment-modal';
 import { PosPaymentSuccessModal } from '../components/pos-payment-success-modal';
 import { PosProductSection } from '../components/pos-product-section';
+import { PosReceiptModal } from '../components/pos-receipt-modal';
 import { PosStatusBar } from '../components/pos-status-bar';
 import { PosWeightModal } from '../components/pos-weight-modal';
 import { useUsbBarcodeScanner } from '../hooks/use-usb-barcode-scanner';
@@ -48,6 +49,7 @@ export function PosPage() {
 
   const [completedTransaction, setCompletedTransaction] = useState<TransactionDto | null>(null);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [receiptTransaction, setReceiptTransaction] = useState<TransactionDto | null>(null);
 
   const addItem = usePosCartStore((state) => state.addItem);
   const updateQuantity = usePosCartStore((state) => state.updateQuantity);
@@ -248,12 +250,13 @@ export function PosPage() {
     searchInput?.focus();
   }, []);
 
-  const handlePrintReceipt = useCallback(
-    (transaction: TransactionDto) => {
-      showNotification('success', `Mencetak struk ${transaction.transactionNo}...`);
-      if (typeof window !== 'undefined' && typeof window.print === 'function') {
-        window.print();
-      }
+  const handlePrintReceipt = useCallback((transaction: TransactionDto) => {
+    setReceiptTransaction(transaction);
+  }, []);
+
+  const handleReceiptPrinted = useCallback(
+    (method: string) => {
+      showNotification('success', `Struk berhasil dikirim via ${method.toUpperCase()}.`);
     },
     [showNotification],
   );
@@ -262,7 +265,13 @@ export function PosPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Abaikan shortcut jika ada modal aktif
-      if (isCameraModalOpen || weightModal.isOpen || paymentModal.isOpen || isSuccessModalOpen) {
+      if (
+        isCameraModalOpen ||
+        weightModal.isOpen ||
+        paymentModal.isOpen ||
+        isSuccessModalOpen ||
+        receiptTransaction
+      ) {
         return;
       }
 
@@ -301,6 +310,7 @@ export function PosPage() {
     isCameraModalOpen,
     isSuccessModalOpen,
     paymentModal.isOpen,
+    receiptTransaction,
     weightModal.isOpen,
   ]);
 
@@ -443,11 +453,19 @@ export function PosPage() {
 
       {/* Modal Sukses Pembayaran (M03-006) */}
       <PosPaymentSuccessModal
-        isOpen={isSuccessModalOpen}
+        isOpen={isSuccessModalOpen && receiptTransaction === null}
         onClose={() => setIsSuccessModalOpen(false)}
         transaction={completedTransaction}
         onPrintReceipt={handlePrintReceipt}
         onNewTransaction={handleNewTransaction}
+      />
+
+      {/* Modal Pratinjau & Cetak Struk ESC/POS (M03-007) */}
+      <PosReceiptModal
+        isOpen={receiptTransaction !== null}
+        onClose={() => setReceiptTransaction(null)}
+        transaction={receiptTransaction}
+        onPrinted={handleReceiptPrinted}
       />
 
       {/* Bottom Status Bar */}
