@@ -42,6 +42,8 @@ export interface WebConfig {
   offlineBackoffBaseMs: number;
   offlineBackoffMaxMs: number;
   offlineMaxWarningHours: number;
+  pwaInstallDismissKey: string;
+  pwaInstallDismissCooldownMs: number;
   storeAddress: string;
   storePhone: string;
   receiptFooter: string;
@@ -122,6 +124,13 @@ export function buildWebConfig(env: Partial<Record<keyof ImportMetaEnv, string>>
       'VITE_OFFLINE_MAX_WARNING_HOURS',
       env.VITE_OFFLINE_MAX_WARNING_HOURS,
       20,
+    ),
+    pwaInstallDismissKey:
+      env.VITE_PWA_INSTALL_DISMISS_KEY?.trim() || 'istana_buah_pwa_dismissed_at',
+    pwaInstallDismissCooldownMs: parsePositiveInt(
+      'VITE_PWA_INSTALL_COOLDOWN_MS',
+      env.VITE_PWA_INSTALL_COOLDOWN_MS,
+      604800000,
     ),
   };
 }
