@@ -21,6 +21,7 @@ import {
   createStockOpnameSchema,
   createSupplierSchema,
   createTransactionSchema,
+  createWasteRecordSchema,
   dashboardChartsQuerySchema,
   dashboardSummaryQuerySchema,
   generateBarcodeQuerySchema,
@@ -48,6 +49,8 @@ import {
   updateProductSchema,
   updateSupplierSchema,
   voidTransactionSchema,
+  wasteRecordListQuerySchema,
+  wasteSummaryQuerySchema,
 } from '../src';
 
 describe('shared constants', () => {
@@ -706,5 +709,50 @@ describe('Dashboard Validators (M08-001)', () => {
     expect(dashboardChartsQuerySchema.parse({ days: '30' })).toEqual({ days: 30 });
     expect(dashboardChartsQuerySchema.safeParse({ days: '0' }).success).toBe(false);
     expect(dashboardChartsQuerySchema.safeParse({ days: '120' }).success).toBe(false);
+  });
+});
+
+describe('Waste Validators (M09-001)', () => {
+  it('createWasteRecordSchema, wasteRecordListQuerySchema & wasteSummaryQuerySchema memvalidasi input penyusutan', () => {
+    const validId = '550e8400-e29b-41d4-a716-446655440000';
+    const valid = createWasteRecordSchema.parse({
+      productId: validId,
+      wasteType: 'ROTTEN',
+      quantity: 2.5,
+      reason: 'Buah memar dan mulai busuk di gudang',
+      photoUrl: 'https://cdn.istanabuah.id/waste/foto-1.jpg',
+    });
+    expect(valid.wasteType).toBe('ROTTEN');
+
+    expect(
+      createWasteRecordSchema.safeParse({
+        productId: validId,
+        wasteType: 'ROTTEN',
+        quantity: 0,
+        reason: 'Rusak',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createWasteRecordSchema.safeParse({
+        productId: validId,
+        wasteType: 'DAMAGED',
+        quantity: 1,
+        reason: 'Rusak kemasan',
+        photoUrl: 'javascript:alert(1)',
+      }).success,
+    ).toBe(false);
+
+    const listQ = wasteRecordListQuerySchema.parse({
+      wasteType: 'SHRINKAGE',
+      search: '  Mangga  ',
+      page: '2',
+    });
+    expect(listQ.wasteType).toBe('SHRINKAGE');
+    expect(listQ.search).toBe('Mangga');
+    expect(listQ.page).toBe(2);
+
+    expect(wasteSummaryQuerySchema.parse({ groupBy: 'month' }).groupBy).toBe('month');
+    expect(wasteSummaryQuerySchema.safeParse({ groupBy: 'year' }).success).toBe(false);
   });
 });

@@ -10,3 +10,4 @@ export * from './shift';
 export * from './stock';
 export * from './supplier';
 export * from './transaction';
+export * from './waste';

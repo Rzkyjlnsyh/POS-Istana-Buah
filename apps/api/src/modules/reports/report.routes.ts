@@ -2,6 +2,8 @@ import { Router, type RequestHandler } from 'express';
 import { authorize } from '../../middleware/authorize';
 import { validateQuery } from '../../middleware/validate';
 import { asyncHandler } from '../../utils/async-handler';
+import { wasteSummaryQuerySchema } from '../waste/waste.dto';
+import type { WasteService } from '../waste/waste.service';
 import { ReportController } from './report.controller';
 import {
   productPerformanceQuerySchema,
@@ -13,6 +15,7 @@ import type { ReportService } from './report.service';
 
 export interface ReportRouterDependencies {
   reportService: ReportService;
+  wasteService?: WasteService;
   authenticate: RequestHandler;
 }
 
@@ -22,7 +25,7 @@ export interface ReportRouterDependencies {
  */
 export function createReportRouter(deps: ReportRouterDependencies): Router {
   const router = Router();
-  const controller = new ReportController(deps.reportService);
+  const controller = new ReportController(deps.reportService, deps.wasteService);
 
   router.use(deps.authenticate, authorize('OWNER', 'MANAGER'));
 
@@ -45,6 +48,11 @@ export function createReportRouter(deps: ReportRouterDependencies): Router {
     '/export/sales',
     validateQuery(salesExportQuerySchema),
     asyncHandler(controller.exportSales),
+  );
+  router.get(
+    '/waste-summary',
+    validateQuery(wasteSummaryQuerySchema),
+    asyncHandler(controller.wasteSummary),
   );
 
   return router;

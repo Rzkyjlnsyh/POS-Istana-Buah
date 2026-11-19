@@ -54,6 +54,9 @@ export const ERROR_CODES = {
   // Pegawai (M10)
   USER_NOT_FOUND: 'USER_NOT_FOUND',
   DUPLICATE_USERNAME: 'DUPLICATE_USERNAME',
+
+  // Penyusutan / Waste (M09)
+  WASTE_RECORD_NOT_FOUND: 'WASTE_RECORD_NOT_FOUND',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
