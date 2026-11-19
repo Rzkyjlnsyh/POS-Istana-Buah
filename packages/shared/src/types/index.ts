@@ -1,6 +1,7 @@
 export * from './api';
 export * from './auth';
 export * from './category';
+export * from './dashboard';
 export * from './product';
 export * from './purchase-order';
 export * from './report';

@@ -6,6 +6,7 @@ import {
   type UserRole,
 } from '@istana-buah/shared';
 import { Prisma, type PrismaClient, type Shift as PrismaShift } from '@prisma/client';
+import { CACHE_NAMESPACES, InMemoryCacheStore, type CacheStore } from '../../lib/cache';
 import { AppError } from '../../utils/app-error';
 import { recordAuditLog } from '../../utils/audit-logger';
 import {
@@ -139,6 +140,7 @@ export class ShiftService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly timezone = 'Asia/Jakarta',
+    private readonly cache: CacheStore = new InMemoryCacheStore(),
   ) {}
 
   private async generateShiftNo(date: Date, tx: Prisma.TransactionClient): Promise<string> {
@@ -218,6 +220,7 @@ export class ShiftService {
       return shift;
     });
 
+    await this.cache.bumpVersion(CACHE_NAMESPACES.DASHBOARD);
     return toDto(created as ShiftWithRelations);
   }
 
@@ -311,6 +314,7 @@ export class ShiftService {
       return closed;
     });
 
+    await this.cache.bumpVersion(CACHE_NAMESPACES.DASHBOARD);
     return toDto(updated as ShiftWithRelations);
   }
 

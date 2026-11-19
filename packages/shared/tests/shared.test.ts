@@ -21,6 +21,8 @@ import {
   createStockOpnameSchema,
   createSupplierSchema,
   createTransactionSchema,
+  dashboardChartsQuerySchema,
+  dashboardSummaryQuerySchema,
   generateBarcodeQuerySchema,
   generateProductCsvTemplate,
   isValidEan13,
@@ -688,5 +690,21 @@ describe('Report Validators (M07-001)', () => {
     });
     expect(exportParsed.format).toBe('pdf');
     expect(salesExportQuerySchema.safeParse({ format: 'docx' }).success).toBe(false);
+  });
+});
+
+describe('Dashboard Validators (M08-001)', () => {
+  it('dashboardSummaryQuerySchema & dashboardChartsQuerySchema memvalidasi parameter dashboard', () => {
+    const sumDefault = dashboardSummaryQuerySchema.parse({});
+    expect(sumDefault).toEqual({ topLimit: 5, lowStockLimit: 5 });
+
+    const sumCustom = dashboardSummaryQuerySchema.parse({ topLimit: '10', lowStockLimit: '8' });
+    expect(sumCustom).toEqual({ topLimit: 10, lowStockLimit: 8 });
+    expect(dashboardSummaryQuerySchema.safeParse({ topLimit: '50' }).success).toBe(false);
+
+    expect(dashboardChartsQuerySchema.parse({})).toEqual({ days: 7 });
+    expect(dashboardChartsQuerySchema.parse({ days: '30' })).toEqual({ days: 30 });
+    expect(dashboardChartsQuerySchema.safeParse({ days: '0' }).success).toBe(false);
+    expect(dashboardChartsQuerySchema.safeParse({ days: '120' }).success).toBe(false);
   });
 });
