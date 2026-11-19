@@ -9,5 +9,6 @@ export * from './report';
 export * from './shift';
 export * from './stock';
 export * from './supplier';
+export * from './sync';
 export * from './transaction';
 export * from './waste';

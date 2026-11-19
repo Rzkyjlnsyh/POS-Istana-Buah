@@ -47,6 +47,8 @@ import {
   stockCurrentReportQuerySchema,
   stockMovementListQuerySchema,
   supplierListQuerySchema,
+  syncBatchBodySchema,
+  syncPullQuerySchema,
   transactionListQuerySchema,
   updateEmployeeSchema,
   updateProductSchema,
@@ -800,5 +802,45 @@ describe('Employee Validators (M10-001)', () => {
     });
     expect(listQ.isActive).toBe(true);
     expect(listQ.search).toBe('Dewi');
+  });
+});
+
+describe('Sync Validators (M11-002)', () => {
+  it('syncBatchBodySchema & syncPullQuerySchema memvalidasi payload batch dan delta pull', () => {
+    const validBatch = syncBatchBodySchema.parse({
+      deviceId: 'pos-device-01',
+      operations: [
+        {
+          type: 'TRANSACTION',
+          clientId: 'pos-device-01-trx-1',
+          timestamp: '2026-11-19T10:00:00.000Z',
+          data: {
+            paymentMethod: 'CASH',
+            amountPaid: 50000,
+            items: [
+              {
+                productId: '11111111-1111-4111-8111-111111111111',
+                quantity: 1.5,
+                unitPrice: 25000,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(validBatch.operations).toHaveLength(1);
+    expect(syncBatchBodySchema.safeParse({ deviceId: 'dev-1', operations: [] }).success).toBe(
+      false,
+    );
+
+    const parsedPullDefault = syncPullQuerySchema.parse({});
+    expect(parsedPullDefault.types).toEqual(['products', 'categories']);
+
+    const parsedPullFiltered = syncPullQuerySchema.parse({
+      since: '2026-11-19T00:00:00.000Z',
+      types: 'products',
+    });
+    expect(parsedPullFiltered.types).toEqual(['products']);
+    expect(syncPullQuerySchema.safeParse({ types: 'unknown_table' }).success).toBe(false);
   });
 });

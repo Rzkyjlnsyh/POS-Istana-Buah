@@ -12,6 +12,7 @@ import {
 } from '../../routes/navigation-config';
 import { useAuthStore } from '../../stores/auth-store';
 import { OrchardBrandMark } from '../common/brand-mark';
+import { OfflineSyncStatusButton } from '../common/offline-sync-status';
 import { Button } from '../ui/button';
 
 const ORDERED_NAV_GROUPS: readonly NavGroup[] = [
@@ -201,6 +202,8 @@ export function AdminLayout() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <OfflineSyncStatusButton />
+
             <span
               className={cn(
                 'hidden items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold md:inline-flex',

@@ -19,6 +19,7 @@ import {
   saveOfflineTransaction,
 } from '../../../lib/db/offline-transaction-service';
 import { useAuthStore } from '../../../stores/auth-store';
+import { useOfflineSyncStore } from '../../../stores/offline-sync-store';
 import { createTransaction } from '../api/transaction-api';
 import { usePosCartStore } from '../stores/pos-cart-store';
 import { formatRupiah } from '../utils/formatters';
@@ -244,6 +245,7 @@ export function PosPaymentModal({
           cashierName: user?.fullName ?? 'Kasir Offline',
           shiftId: activeShiftId,
         });
+        await useOfflineSyncStore.getState().refreshStatus();
         onSuccess(saved.transaction);
         onClose();
       };
