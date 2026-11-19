@@ -9,13 +9,10 @@ import {
   batchImportProductItemSchema,
   batchImportProductsSchema,
   calculateEan13CheckDigit,
-  closeShiftSchema,
-  encodeBarcodePattern,
-  encodeCode39Pattern,
-  encodeEan13Pattern,
-  escapeCsvCell,
   categoryListQuerySchema,
   changePasswordSchema,
+  closeShiftSchema,
+  createEmployeeSchema,
   createProductSchema,
   createPurchaseOrderSchema,
   createStockOpnameSchema,
@@ -24,6 +21,11 @@ import {
   createWasteRecordSchema,
   dashboardChartsQuerySchema,
   dashboardSummaryQuerySchema,
+  employeeListQuerySchema,
+  encodeBarcodePattern,
+  encodeCode39Pattern,
+  encodeEan13Pattern,
+  escapeCsvCell,
   generateBarcodeQuerySchema,
   generateProductCsvTemplate,
   isValidEan13,
@@ -46,6 +48,7 @@ import {
   stockMovementListQuerySchema,
   supplierListQuerySchema,
   transactionListQuerySchema,
+  updateEmployeeSchema,
   updateProductSchema,
   updateSupplierSchema,
   voidTransactionSchema,
@@ -754,5 +757,48 @@ describe('Waste Validators (M09-001)', () => {
 
     expect(wasteSummaryQuerySchema.parse({ groupBy: 'month' }).groupBy).toBe('month');
     expect(wasteSummaryQuerySchema.safeParse({ groupBy: 'year' }).success).toBe(false);
+  });
+});
+
+describe('Employee Validators (M10-001)', () => {
+  it('createEmployeeSchema, updateEmployeeSchema & employeeListQuerySchema memvalidasi data pegawai', () => {
+    const valid = createEmployeeSchema.parse({
+      username: 'kasir_baru01',
+      fullName: 'Dewi Sartika',
+      password: 'KasirStrong123',
+      role: 'CASHIER',
+      phoneNumber: '08123456789',
+    });
+    expect(valid.isActive).toBe(true);
+
+    expect(
+      createEmployeeSchema.safeParse({
+        username: 'kasir baru!',
+        fullName: 'Dewi',
+        password: 'KasirStrong123',
+        role: 'CASHIER',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createEmployeeSchema.safeParse({
+        username: 'kasir_ok',
+        fullName: 'Dewi',
+        password: 'weak',
+        role: 'CASHIER',
+      }).success,
+    ).toBe(false);
+
+    expect(updateEmployeeSchema.parse({ isActive: false, unlockAccount: true }).isActive).toBe(
+      false,
+    );
+
+    const listQ = employeeListQuerySchema.parse({
+      role: 'CASHIER',
+      isActive: 'true',
+      search: '  Dewi ',
+    });
+    expect(listQ.isActive).toBe(true);
+    expect(listQ.search).toBe('Dewi');
   });
 });
