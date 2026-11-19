@@ -1,5 +1,6 @@
 import { ERROR_CODES } from '@istana-buah/shared';
 import { Prisma, type PrismaClient } from '@prisma/client';
+import ExcelJS from 'exceljs';
 import type { Request, Response } from 'express';
 import { cacheConfig } from '../../src/config/cache.config';
 import { InMemoryCacheStore } from '../../src/lib/cache';
@@ -10,6 +11,7 @@ import {
   buildSalesCsvBuffer,
   buildSalesExcelBuffer,
 } from '../../src/modules/reports/report-export-formatter';
+import type { WasteService } from '../../src/modules/waste/waste.service';
 
 describe('M07-001 Unit: ReportService, Export Formatters & ReportController', () => {
   const TZ = 'Asia/Jakarta';
@@ -233,7 +235,7 @@ describe('M07-001 Unit: ReportService, Export Formatters & ReportController', ()
     expect(stockLow.items.every((i) => i.isLowStock || i.isOutOfStock)).toBe(true);
   });
 
-  it('menghasilkan ekspor CSV (UTF-8 BOM + anti-formula-injection), Excel XML, & PDF A4 multi-halaman valid', async () => {
+  it('menghasilkan ekspor CSV (UTF-8 BOM + anti-formula-injection), Excel OOXML (.xlsx via ExcelJS), & PDF A4 multi-halaman (via PDFKit)', async () => {
     const service = new ReportService(
       createMockPrisma(),
       new InMemoryCacheStore(),
@@ -252,15 +254,25 @@ describe('M07-001 Unit: ReportService, Export Formatters & ReportController', ()
     expect(csvText.startsWith('\uFEFF')).toBe(true);
     expect(csvText).toContain("'=HYPERLINK(");
 
-    const xlsFile = await service.exportSalesReport({
+    const xlsxFile = await service.exportSalesReport({
       format: 'excel',
       startDate: '2026-11-01',
       endDate: '2026-11-30',
     });
-    expect(xlsFile.filename).toMatch(/\.xls$/);
-    const xlsText = xlsFile.content.toString('utf8');
-    expect(xlsText).toContain('ss:Name="Ringkasan"');
-    expect(xlsText).toContain('ss:Name="Detail Transaksi"');
+    expect(xlsxFile.filename).toMatch(/\.xlsx$/);
+    expect(xlsxFile.mimeType).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(xlsxFile.content.subarray(0, 2).toString('utf8')).toBe('PK');
+
+    const parsedWorkbook = new ExcelJS.Workbook();
+    await parsedWorkbook.xlsx.load(xlsxFile.content as unknown as ArrayBuffer);
+    expect(parsedWorkbook.worksheets.map((ws) => ws.name)).toEqual([
+      'Ringkasan',
+      'Detail Transaksi',
+    ]);
+    const detailSheet = parsedWorkbook.getWorksheet('Detail Transaksi');
+    expect(detailSheet?.getRow(3).getCell(3).value).toBe('\'=HYPERLINK("bad")');
 
     const pdfFile = await service.exportSalesReport({
       format: 'pdf',
@@ -268,12 +280,11 @@ describe('M07-001 Unit: ReportService, Export Formatters & ReportController', ()
       endDate: '2026-11-30',
     });
     expect(pdfFile.mimeType).toBe('application/pdf');
-    const pdfText = pdfFile.content.toString('utf8');
-    expect(pdfText.startsWith('%PDF-1.4')).toBe(true);
-    expect(pdfText).toContain('xref');
-    expect(pdfText.trim().endsWith('%%EOF')).toBe(true);
+    const pdfLatin1 = pdfFile.content.toString('latin1');
+    expect(pdfLatin1.startsWith('%PDF-')).toBe(true);
+    expect(pdfLatin1.trim().endsWith('%%EOF')).toBe(true);
 
-    // Uji multi-page pagination PDF builder (45 baris > 34 baris halaman pertama)
+    // Uji multi-page pagination PDFKit (45 baris > kapasitas 1 halaman A4)
     const manyRows = Array.from({ length: 45 }, (_, idx) => ({
       transactionNo: `TRX-20261110-${String(idx + 1).padStart(3, '0')}`,
       transactedAtLabel: '2026-11-10 10:00',
@@ -285,7 +296,7 @@ describe('M07-001 Unit: ReportService, Export Formatters & ReportController', ()
       costOfGoodsSold: '30000.00',
       grossProfit: '20000.00',
     }));
-    const multiPagePdf = buildSalesReportPdf({
+    const multiPagePdf = await buildSalesReportPdf({
       storeName: STORE,
       periodLabel: '2026-11-01 s/d 2026-11-30',
       printedAtLabel: '2026-11-18 09:00',
@@ -305,7 +316,7 @@ describe('M07-001 Unit: ReportService, Export Formatters & ReportController', ()
       },
       rows: manyRows,
     });
-    expect(multiPagePdf.toString('utf8')).toContain('/Count 2');
+    expect(multiPagePdf.toString('latin1')).toContain('/Count 2');
 
     // Uji empty PDF/CSV/Excel rows
     const emptySummary = await new ReportService(
@@ -319,23 +330,25 @@ describe('M07-001 Unit: ReportService, Export Formatters & ReportController', ()
       STORE,
     ).getSalesSummary({ groupBy: 'day' });
     expect(emptySummary.profitMargin).toBe('0.00');
-    expect(
-      buildSalesReportPdf({
-        storeName: STORE,
-        periodLabel: '2026-11-01',
-        printedAtLabel: '2026-11-01 10:00',
-        summary: emptySummary,
-        rows: [],
-      }).toString('utf8'),
-    ).toContain('Tidak ada transaksi pada periode ini.');
+    const emptyPdf = await buildSalesReportPdf({
+      storeName: STORE,
+      periodLabel: '2026-11-01',
+      printedAtLabel: '2026-11-01 10:00',
+      summary: emptySummary,
+      rows: [],
+    });
+    expect(emptyPdf.toString('latin1').startsWith('%PDF-')).toBe(true);
     expect(
       buildSalesCsvBuffer({ storeName: STORE, periodLabel: 'p', summary: emptySummary, rows: [] })
         .length,
     ).toBeGreaterThan(0);
-    expect(
-      buildSalesExcelBuffer({ storeName: STORE, periodLabel: 'p', summary: emptySummary, rows: [] })
-        .length,
-    ).toBeGreaterThan(0);
+    const emptyExcel = await buildSalesExcelBuffer({
+      storeName: STORE,
+      periodLabel: 'p',
+      summary: emptySummary,
+      rows: [],
+    });
+    expect(emptyExcel.subarray(0, 2).toString('utf8')).toBe('PK');
   });
 
   it('ReportController mengirim respons JSON dan header download file dengan benar', async () => {
@@ -521,5 +534,69 @@ describe('M07-001 Unit: ReportService, Export Formatters & ReportController', ()
     expect(sp.totalOutstandingDebt).toBe('200000.00');
     expect(sp.suppliers[0]?.supplierName).toBe('CV Kebun Nusantara');
     expect(sp.suppliers[0]?.totalItemsPurchased).toBe('20');
+
+    // M12-002: Ekspor PDF (PDFKit), Excel (.xlsx via ExcelJS) & CSV untuk seluruh jenis laporan lanjutan
+    const gpPdf = await service.exportReport('gross-profit', {
+      format: 'pdf',
+      startDate: '2026-11-18',
+      endDate: '2026-11-18',
+    });
+    expect(gpPdf.filename).toMatch(/^laporan-keuntungan-kotor-.*\.pdf$/);
+    expect(gpPdf.content.toString('latin1').startsWith('%PDF-')).toBe(true);
+
+    const cpXlsx = await service.exportReport('cashier-performance', {
+      format: 'excel',
+      startDate: '2026-11-18',
+      endDate: '2026-11-18',
+    });
+    expect(cpXlsx.filename).toMatch(/^laporan-performa-kasir-.*\.xlsx$/);
+    const cpWb = new ExcelJS.Workbook();
+    await cpWb.xlsx.load(cpXlsx.content as unknown as ArrayBuffer);
+    expect(cpWb.worksheets.map((w) => w.name)).toEqual([
+      'Ringkasan',
+      'Performa Kasir',
+      'Riwayat Shift',
+    ]);
+
+    const spCsv = await service.exportReport('supplier-purchases', {
+      format: 'csv',
+      startDate: '2026-11-18',
+      endDate: '2026-11-18',
+    });
+    expect(spCsv.filename).toMatch(/^laporan-pembelian-supplier-.*\.csv$/);
+    expect(spCsv.content.toString('utf8')).toContain('CV Kebun Nusantara');
+
+    const fakeWasteService = {
+      getSummary: jest.fn().mockResolvedValue({
+        startDate: '2026-11-18T00:00:00.000Z',
+        endDate: '2026-11-18T23:59:59.999Z',
+        groupBy: 'day',
+        totalRecords: 1,
+        totalQuantity: '1.5',
+        totalEstimatedCost: '30000.00',
+        byType: [
+          { wasteType: 'ROTTEN', count: 1, totalQuantity: '1.5', totalEstimatedCost: '30000.00' },
+        ],
+        topProducts: [
+          {
+            productId: 'p-1',
+            productName: 'Mangga',
+            productType: 'WEIGHT',
+            categoryName: 'Buah Lokal',
+            count: 1,
+            totalQuantity: '1.5',
+            totalEstimatedCost: '30000.00',
+          },
+        ],
+        timeline: [],
+      }),
+    };
+    const wasteXlsx = await service.exportReport(
+      'waste-summary',
+      { format: 'excel', startDate: '2026-11-18', endDate: '2026-11-18' },
+      fakeWasteService as unknown as WasteService,
+    );
+    expect(wasteXlsx.filename).toMatch(/^laporan-penyusutan-buah-.*\.xlsx$/);
+    expect(wasteXlsx.content.subarray(0, 2).toString('utf8')).toBe('PK');
   });
 });

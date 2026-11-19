@@ -28,11 +28,21 @@ import {
   parseRangeBoundary,
   shiftYmdDashed,
 } from '../../utils/date-helpers';
-import { buildSalesReportPdf } from './pdf-report-builder';
+import { buildSalesReportPdf, buildStructuredReportPdf } from './pdf-report-builder';
+import {
+  buildCashierPerformanceExportModels,
+  buildCurrentStockExportModels,
+  buildGrossProfitExportModels,
+  buildSupplierPurchasesExportModels,
+  buildWasteSummaryExportModels,
+  type ExportDocumentPair,
+} from './report-export-builders';
 import type {
   CashierPerformanceQuery,
   GrossProfitReportQuery,
   ProductPerformanceQuery,
+  ReportExportServiceQuery,
+  ReportExportType,
   SalesExportFileResult,
   SalesExportQuery,
   SalesExportTransactionRow,
@@ -40,7 +50,15 @@ import type {
   StockCurrentReportServiceQuery,
   SupplierPurchasesReportQuery,
 } from './report.dto';
-import { buildSalesCsvBuffer, buildSalesExcelBuffer } from './report-export-formatter';
+import {
+  buildSalesCsvBuffer,
+  buildSalesExcelBuffer,
+  buildStructuredCsvBuffer,
+  buildStructuredExcelBuffer,
+} from './report-export-formatter';
+import type { WasteService } from '../waste/waste.service';
+
+export const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 export const REPORT_CACHE_NAMESPACE = CACHE_NAMESPACES.REPORTS;
 const DEFAULT_REPORT_WINDOW_DAYS = 30;
@@ -545,15 +563,16 @@ export class ReportService {
     const safeEnd = window.endYmd.replace(/[^0-9A-Za-z_-]/g, '');
     const baseName = `laporan-penjualan-${safeStart}-${safeEnd}`;
     const periodLabel = `${window.startYmd} s/d ${window.endYmd}`;
+    const printedAtLabel = formatDateTimeLabel(new Date(), this.timezone);
 
     if (query.format === 'pdf') {
       return {
         filename: `${baseName}.pdf`,
         mimeType: 'application/pdf',
-        content: buildSalesReportPdf({
+        content: await buildSalesReportPdf({
           storeName: this.storeName,
           periodLabel,
-          printedAtLabel: formatDateTimeLabel(new Date(), this.timezone),
+          printedAtLabel,
           summary,
           rows: exportRows,
         }),
@@ -562,11 +581,12 @@ export class ReportService {
 
     if (query.format === 'excel') {
       return {
-        filename: `${baseName}.xls`,
-        mimeType: 'application/vnd.ms-excel; charset=utf-8',
-        content: buildSalesExcelBuffer({
+        filename: `${baseName}.xlsx`,
+        mimeType: XLSX_MIME_TYPE,
+        content: await buildSalesExcelBuffer({
           storeName: this.storeName,
           periodLabel,
+          printedAtLabel,
           summary,
           rows: exportRows,
         }),
@@ -579,9 +599,113 @@ export class ReportService {
       content: buildSalesCsvBuffer({
         storeName: this.storeName,
         periodLabel,
+        printedAtLabel,
         summary,
         rows: exportRows,
       }),
+    };
+  }
+
+  /**
+   * Mengekspor seluruh jenis laporan operasional ke PDF (PDFKit), Excel (.xlsx via ExcelJS), atau CSV (M12-002 / FR-RPT-08).
+   */
+  async exportReport(
+    reportType: ReportExportType,
+    query: ReportExportServiceQuery,
+    wasteService?: WasteService,
+  ): Promise<SalesExportFileResult> {
+    if (reportType === 'sales') {
+      return this.exportSalesReport({
+        format: query.format,
+        startDate: query.startDate,
+        endDate: query.endDate,
+      });
+    }
+
+    const printedAtLabel = formatDateTimeLabel(new Date(), this.timezone);
+    const todayYmd = getCalendarYmdDashedInTimeZone(new Date(), this.timezone);
+
+    let pair: ExportDocumentPair;
+    let dateSuffix: string;
+
+    if (reportType === 'stock-current') {
+      const stock = await this.getCurrentStock({
+        categoryId: query.categoryId,
+        lowStockOnly: query.lowStockOnly,
+        search: query.search,
+      });
+      pair = buildCurrentStockExportModels(stock, {
+        storeName: this.storeName,
+        periodLabel: `Posisi per ${todayYmd}`,
+        printedAtLabel,
+      });
+      dateSuffix = todayYmd.replace(/[^0-9A-Za-z_-]/g, '');
+    } else {
+      const window = this.resolveDateWindow(query.startDate, query.endDate);
+      const periodLabel = `${window.startYmd} s/d ${window.endYmd}`;
+      dateSuffix = `${window.startYmd}-${window.endYmd}`.replace(/[^0-9A-Za-z_-]/g, '');
+      const meta = { storeName: this.storeName, periodLabel, printedAtLabel };
+
+      if (reportType === 'gross-profit') {
+        const report = await this.getGrossProfitReport({
+          startDate: query.startDate,
+          endDate: query.endDate,
+          groupBy: query.groupBy ?? 'day',
+        });
+        pair = buildGrossProfitExportModels(report, meta);
+      } else if (reportType === 'cashier-performance') {
+        const report = await this.getCashierPerformance({
+          startDate: query.startDate,
+          endDate: query.endDate,
+          cashierId: query.cashierId,
+        });
+        pair = buildCashierPerformanceExportModels(report, meta);
+      } else if (reportType === 'supplier-purchases') {
+        const report = await this.getSupplierPurchases({
+          startDate: query.startDate,
+          endDate: query.endDate,
+          supplierId: query.supplierId,
+        });
+        pair = buildSupplierPurchasesExportModels(report, meta);
+      } else {
+        if (!wasteService) {
+          throw new AppError(
+            ERROR_CODES.INTERNAL_ERROR,
+            'Layanan laporan penyusutan belum aktif untuk ekspor',
+            501,
+          );
+        }
+        const report = await wasteService.getSummary({
+          startDate: query.startDate,
+          endDate: query.endDate,
+          groupBy: query.groupBy === 'month' ? 'month' : 'day',
+        });
+        pair = buildWasteSummaryExportModels(report, meta);
+      }
+    }
+
+    const baseName = `${pair.baseFileSlug}-${dateSuffix}`;
+
+    if (query.format === 'pdf') {
+      return {
+        filename: `${baseName}.pdf`,
+        mimeType: 'application/pdf',
+        content: await buildStructuredReportPdf(pair.pdf),
+      };
+    }
+
+    if (query.format === 'excel') {
+      return {
+        filename: `${baseName}.xlsx`,
+        mimeType: XLSX_MIME_TYPE,
+        content: await buildStructuredExcelBuffer(pair.spreadsheet),
+      };
+    }
+
+    return {
+      filename: `${baseName}.csv`,
+      mimeType: 'text/csv; charset=utf-8',
+      content: buildStructuredCsvBuffer(pair.spreadsheet),
     };
   }
 

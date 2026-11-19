@@ -1,5 +1,34 @@
 import type { SalesSummaryReportDto } from '@istana-buah/shared';
+import PDFDocument from 'pdfkit';
 import type { SalesExportTransactionRow } from './report.dto';
+
+export interface PdfKpiItem {
+  label: string;
+  value: string;
+  note?: string;
+}
+
+export interface PdfTableColumn {
+  header: string;
+  weight: number;
+  align?: 'left' | 'right' | 'center';
+}
+
+export interface PdfTableSection {
+  title: string;
+  columns: PdfTableColumn[];
+  rows: string[][];
+  emptyMessage: string;
+}
+
+export interface StructuredPdfReportInput {
+  storeName: string;
+  reportTitle: string;
+  periodLabel: string;
+  printedAtLabel: string;
+  kpis: PdfKpiItem[];
+  sections: PdfTableSection[];
+}
 
 export interface SalesPdfReportInput {
   storeName: string;
@@ -9,253 +38,347 @@ export interface SalesPdfReportInput {
   rows: SalesExportTransactionRow[];
 }
 
-const A4_WIDTH = 595;
-const A4_HEIGHT = 842;
-const MARGIN_X = 36;
-const TOP_START_Y = 796;
-const FOOTER_Y = 26;
-const LINE_HEIGHT = 13;
-const FIRST_PAGE_MAX_ROWS = 34;
-const NEXT_PAGE_MAX_ROWS = 48;
+const PAGE_MARGIN = 36;
+const FOOTER_RESERVE = 42;
+const BRAND_PRIMARY_HEX = '#14532D';
+const BRAND_SOFT_BG_HEX = '#F0FDF4';
+const ROW_STRIPE_HEX = '#F8FAF9';
+const BORDER_SUBTLE_HEX = '#D4E4D9';
+const INK_PRIMARY_HEX = '#102418';
+const INK_SECONDARY_HEX = '#4B6755';
 
-function sanitizeAsciiText(value: string): string {
-  return value
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/[^\x20-\x7E]/g, ' ')
-    .trim();
-}
-
-function escapePdfString(value: string): string {
-  return sanitizeAsciiText(value)
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
-}
-
-function padRight(text: string, width: number): string {
-  const clean = sanitizeAsciiText(text);
-  if (clean.length >= width) {
-    return `${clean.slice(0, Math.max(1, width - 1))}.`;
-  }
-  return clean.padEnd(width, ' ');
-}
-
-function padLeft(text: string, width: number): string {
-  const clean = sanitizeAsciiText(text);
-  if (clean.length >= width) {
-    return clean.slice(0, width);
-  }
-  return clean.padStart(width, ' ');
-}
-
-function formatRupiahAscii(decimalString: string): string {
-  const num = Number(decimalString);
-  if (!Number.isFinite(num)) return decimalString;
-  const formatted = Math.round(num)
+export function formatRupiahPdf(value: string | number): string {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num)) return String(value);
+  const sign = num < 0 ? '-' : '';
+  const absFormatted = Math.round(Math.abs(num))
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `Rp ${formatted}`;
+  return `${sign}Rp ${absFormatted}`;
 }
 
-function pushTextLine(
-  commands: string[],
-  font: 'F1' | 'F2' | 'F3',
-  fontSize: number,
-  x: number,
-  y: number,
+function sanitizePdfText(value: string): string {
+  return value.replace(/[\r\n\t]+/g, ' ').trim();
+}
+
+function truncateToFit(
+  doc: PDFKit.PDFDocument,
   text: string,
-): void {
-  commands.push(`BT /${font} ${fontSize} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfString(text)}) Tj ET`);
-}
-
-function pushHorizontalRule(commands: string[], y: number): void {
-  commands.push(`0.8 w ${MARGIN_X} ${y} m ${A4_WIDTH - MARGIN_X} ${y} l S`);
-}
-
-function buildTableHeaderLine(): string {
-  return [
-    padRight('No. Transaksi', 18),
-    padRight('Waktu', 16),
-    padRight('Kasir', 14),
-    padRight('Metode', 10),
-    padRight('Status', 9),
-    padLeft('Total', 13),
-    padLeft('Laba', 13),
-  ].join(' ');
-}
-
-function buildTableDataLine(row: SalesExportTransactionRow): string {
-  return [
-    padRight(row.transactionNo, 18),
-    padRight(row.transactedAtLabel, 16),
-    padRight(row.cashierName, 14),
-    padRight(row.paymentMethod, 10),
-    padRight(row.status, 9),
-    padLeft(formatRupiahAscii(row.totalAmount), 13),
-    padLeft(formatRupiahAscii(row.grossProfit), 13),
-  ].join(' ');
-}
-
-function paginateRows(rows: SalesExportTransactionRow[]): SalesExportTransactionRow[][] {
-  if (rows.length === 0) {
-    return [[]];
-  }
-  const pages: SalesExportTransactionRow[][] = [];
-  pages.push(rows.slice(0, FIRST_PAGE_MAX_ROWS));
-  let cursor = FIRST_PAGE_MAX_ROWS;
-  while (cursor < rows.length) {
-    pages.push(rows.slice(cursor, cursor + NEXT_PAGE_MAX_ROWS));
-    cursor += NEXT_PAGE_MAX_ROWS;
-  }
-  return pages;
-}
-
-function renderPageCommands(
-  input: SalesPdfReportInput,
-  pageRows: SalesExportTransactionRow[],
-  pageIndex: number,
-  totalPages: number,
+  maxWidth: number,
+  fontSize: number,
 ): string {
-  const cmds: string[] = [];
-  let y = TOP_START_Y;
-
-  if (pageIndex === 0) {
-    pushTextLine(cmds, 'F2', 15, MARGIN_X, y, `${input.storeName} - Laporan Penjualan`);
-    y -= 18;
-    pushTextLine(
-      cmds,
-      'F1',
-      9,
-      MARGIN_X,
-      y,
-      `Periode: ${input.periodLabel}   |   Dicetak: ${input.printedAtLabel}`,
-    );
-    y -= 10;
-    pushHorizontalRule(cmds, y);
-    y -= 18;
-
-    const { summary } = input;
-    pushTextLine(
-      cmds,
-      'F2',
-      10,
-      MARGIN_X,
-      y,
-      `Total Penjualan: ${formatRupiahAscii(summary.totalRevenue)}   |   Transaksi Selesai: ${summary.totalTransactions}   |   Void: ${summary.voidedTransactions}`,
-    );
-    y -= 15;
-    pushTextLine(
-      cmds,
-      'F1',
-      9,
-      MARGIN_X,
-      y,
-      `Rata-rata: ${formatRupiahAscii(summary.avgTransactionValue)}   |   Total HPP: ${formatRupiahAscii(summary.totalCostOfGoodsSold)}   |   Laba Kotor: ${formatRupiahAscii(summary.grossProfit)} (${summary.profitMargin}%)`,
-    );
-    y -= 14;
-    pushHorizontalRule(cmds, y);
-    y -= 20;
-  } else {
-    pushTextLine(
-      cmds,
-      'F2',
-      11,
-      MARGIN_X,
-      y,
-      `${input.storeName} - Detail Transaksi (${input.periodLabel})`,
-    );
-    y -= 14;
-    pushHorizontalRule(cmds, y);
-    y -= 18;
+  const clean = sanitizePdfText(text);
+  doc.fontSize(fontSize);
+  if (doc.widthOfString(clean) <= maxWidth) {
+    return clean;
   }
-
-  pushTextLine(cmds, 'F3', 8, MARGIN_X, y, buildTableHeaderLine());
-  y -= 6;
-  pushHorizontalRule(cmds, y);
-  y -= LINE_HEIGHT;
-
-  if (pageRows.length === 0) {
-    pushTextLine(cmds, 'F1', 9, MARGIN_X, y, 'Tidak ada transaksi pada periode ini.');
-  } else {
-    for (const row of pageRows) {
-      pushTextLine(cmds, 'F3', 7.5, MARGIN_X, y, buildTableDataLine(row));
-      y -= LINE_HEIGHT;
-    }
+  let clipped = clean;
+  while (clipped.length > 1 && doc.widthOfString(`${clipped}...`) > maxWidth) {
+    clipped = clipped.slice(0, -1);
   }
+  return `${clipped}...`;
+}
 
-  pushTextLine(
-    cmds,
-    'F1',
-    8,
-    MARGIN_X,
-    FOOTER_Y,
-    `Halaman ${pageIndex + 1} dari ${totalPages} - ${input.storeName}`,
-  );
-
-  return cmds.join('\n');
+function computeColumnWidths(columns: PdfTableColumn[], totalWidth: number): number[] {
+  const totalWeight = columns.reduce((sum, col) => sum + Math.max(1, col.weight), 0);
+  return columns.map((col) => (Math.max(1, col.weight) / totalWeight) * totalWidth);
 }
 
 /**
- * Menghasilkan dokumen PDF 1.4 multi-halaman ukuran A4 secara deterministik tanpa dependensi eksternal.
+ * Menghasilkan dokumen PDF A4 profesional multi-halaman menggunakan PDFKit.
  */
-export function buildSalesReportPdf(input: SalesPdfReportInput): Buffer {
-  const rowPages = paginateRows(input.rows);
-  const totalPages = rowPages.length;
-
-  // Nomor objek tetap: 1=Catalog, 2=Pages, 3=Helvetica, 4=Helvetica-Bold, 5=Courier
-  // Lalu per halaman: (pageObjId, contentObjId) mulai dari 6
-  const objects: Array<{ id: number; body: string }> = [
-    { id: 1, body: '<< /Type /Catalog /Pages 2 0 R >>' },
-    { id: 2, body: '' },
-    { id: 3, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>' },
-    { id: 4, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>' },
-    { id: 5, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>' },
-  ];
-
-  const pageIds: number[] = [];
-  let nextObjId = 6;
-
-  rowPages.forEach((pageRows, pageIndex) => {
-    const pageId = nextObjId++;
-    const contentId = nextObjId++;
-    pageIds.push(pageId);
-
-    const stream = renderPageCommands(input, pageRows, pageIndex, totalPages);
-    const streamLen = Buffer.byteLength(stream, 'utf8');
-
-    objects.push({
-      id: pageId,
-      body: `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_WIDTH} ${A4_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${contentId} 0 R >>`,
+export async function buildStructuredReportPdf(input: StructuredPdfReportInput): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: PAGE_MARGIN,
+      bufferPages: true,
+      info: {
+        Title: `${input.storeName} - ${input.reportTitle}`,
+        Author: input.storeName,
+        Subject: `Periode ${input.periodLabel}`,
+        Creator: 'Istana Buah POS',
+      },
     });
-    objects.push({
-      id: contentId,
-      body: `<< /Length ${streamLen} >>\nstream\n${stream}\nendstream`,
+
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    doc.on('error', reject);
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+    const contentWidth = pageWidth - PAGE_MARGIN * 2;
+    const maxContentY = pageHeight - PAGE_MARGIN - FOOTER_RESERVE;
+
+    // 1. Header Banner Halaman Pertama
+    let y = PAGE_MARGIN;
+    const bannerHeight = 56;
+    doc.save();
+    doc.roundedRect(PAGE_MARGIN, y, contentWidth, bannerHeight, 6).fill(BRAND_PRIMARY_HEX);
+    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(14);
+    doc.text(sanitizePdfText(input.storeName), PAGE_MARGIN + 14, y + 11, {
+      width: contentWidth - 28,
+      lineBreak: false,
     });
+    doc.fillColor('#DCFCE7').font('Helvetica').fontSize(10);
+    doc.text(sanitizePdfText(input.reportTitle), PAGE_MARGIN + 14, y + 31, {
+      width: contentWidth - 28,
+      lineBreak: false,
+    });
+    doc.restore();
+
+    y += bannerHeight + 10;
+
+    // Baris Metadata Periode & Waktu Cetak
+    doc.fillColor(INK_SECONDARY_HEX).font('Helvetica').fontSize(8.5);
+    doc.text(`Periode: ${sanitizePdfText(input.periodLabel)}`, PAGE_MARGIN, y, {
+      width: contentWidth * 0.6,
+      lineBreak: false,
+    });
+    doc.text(
+      `Dicetak: ${sanitizePdfText(input.printedAtLabel)}`,
+      PAGE_MARGIN + contentWidth * 0.6,
+      y,
+      {
+        width: contentWidth * 0.4,
+        align: 'right',
+        lineBreak: false,
+      },
+    );
+    y += 16;
+
+    // 2. Kartu KPI Ringkasan (maksimal 4 kolom per baris)
+    if (input.kpis.length > 0) {
+      const colsPerRow = Math.min(4, Math.max(2, input.kpis.length));
+      const gap = 8;
+      const cardWidth = (contentWidth - gap * (colsPerRow - 1)) / colsPerRow;
+      const cardHeight = 46;
+
+      for (let idx = 0; idx < input.kpis.length; idx += colsPerRow) {
+        const rowCards = input.kpis.slice(idx, idx + colsPerRow);
+        if (y + cardHeight > maxContentY) {
+          doc.addPage();
+          y = PAGE_MARGIN;
+        }
+        rowCards.forEach((kpi, colIdx) => {
+          const cardX = PAGE_MARGIN + colIdx * (cardWidth + gap);
+          doc.save();
+          doc
+            .roundedRect(cardX, y, cardWidth, cardHeight, 4)
+            .fillAndStroke(BRAND_SOFT_BG_HEX, BORDER_SUBTLE_HEX);
+          doc.fillColor(INK_SECONDARY_HEX).font('Helvetica').fontSize(7.5);
+          doc.text(truncateToFit(doc, kpi.label, cardWidth - 12, 7.5), cardX + 6, y + 7, {
+            width: cardWidth - 12,
+            lineBreak: false,
+          });
+          doc.fillColor(INK_PRIMARY_HEX).font('Helvetica-Bold').fontSize(10.5);
+          doc.text(truncateToFit(doc, kpi.value, cardWidth - 12, 10.5), cardX + 6, y + 19, {
+            width: cardWidth - 12,
+            lineBreak: false,
+          });
+          if (kpi.note) {
+            doc.fillColor(INK_SECONDARY_HEX).font('Helvetica').fontSize(7);
+            doc.text(truncateToFit(doc, kpi.note, cardWidth - 12, 7), cardX + 6, y + 34, {
+              width: cardWidth - 12,
+              lineBreak: false,
+            });
+          }
+          doc.restore();
+        });
+        y += cardHeight + 10;
+      }
+    }
+
+    const drawContinuationHeader = (sectionTitle: string): number => {
+      let nextY = PAGE_MARGIN;
+      doc.fillColor(BRAND_PRIMARY_HEX).font('Helvetica-Bold').fontSize(10.5);
+      doc.text(
+        `${sanitizePdfText(input.storeName)} — ${sanitizePdfText(sectionTitle)} (${sanitizePdfText(input.periodLabel)})`,
+        PAGE_MARGIN,
+        nextY,
+        { width: contentWidth, lineBreak: false },
+      );
+      nextY += 15;
+      doc
+        .moveTo(PAGE_MARGIN, nextY)
+        .lineTo(PAGE_MARGIN + contentWidth, nextY)
+        .lineWidth(0.75)
+        .strokeColor(BORDER_SUBTLE_HEX)
+        .stroke();
+      return nextY + 10;
+    };
+
+    const drawTableHeader = (
+      columns: PdfTableColumn[],
+      colWidths: number[],
+      topY: number,
+    ): number => {
+      const headerHeight = 20;
+      doc.save();
+      doc.rect(PAGE_MARGIN, topY, contentWidth, headerHeight).fill(BRAND_PRIMARY_HEX);
+      doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(7.8);
+
+      let cursorX = PAGE_MARGIN;
+      columns.forEach((col, index) => {
+        const w = colWidths[index] ?? 60;
+        const text = truncateToFit(doc, col.header, w - 8, 7.8);
+        doc.text(text, cursorX + 4, topY + 6, {
+          width: w - 8,
+          align: col.align ?? 'left',
+          lineBreak: false,
+        });
+        cursorX += w;
+      });
+      doc.restore();
+      return topY + headerHeight;
+    };
+
+    // 3. Render Setiap Section Tabel dengan Paginasi Otomatis
+    const rowHeight = 18;
+    for (const section of input.sections) {
+      if (y + 52 > maxContentY) {
+        doc.addPage();
+        y = PAGE_MARGIN;
+      }
+
+      doc.fillColor(INK_PRIMARY_HEX).font('Helvetica-Bold').fontSize(10.5);
+      doc.text(sanitizePdfText(section.title), PAGE_MARGIN, y, {
+        width: contentWidth,
+        lineBreak: false,
+      });
+      y += 16;
+
+      const colWidths = computeColumnWidths(section.columns, contentWidth);
+      y = drawTableHeader(section.columns, colWidths, y);
+
+      if (section.rows.length === 0) {
+        doc.save();
+        doc.rect(PAGE_MARGIN, y, contentWidth, 24).fillAndStroke(ROW_STRIPE_HEX, BORDER_SUBTLE_HEX);
+        doc.fillColor(INK_SECONDARY_HEX).font('Helvetica-Oblique').fontSize(8.5);
+        doc.text(sanitizePdfText(section.emptyMessage), PAGE_MARGIN + 8, y + 7, {
+          width: contentWidth - 16,
+          lineBreak: false,
+        });
+        doc.restore();
+        y += 34;
+        continue;
+      }
+
+      section.rows.forEach((rowCells, rowIdx) => {
+        if (y + rowHeight > maxContentY) {
+          doc.addPage();
+          y = drawContinuationHeader(section.title);
+          y = drawTableHeader(section.columns, colWidths, y);
+        }
+
+        doc.save();
+        if (rowIdx % 2 === 1) {
+          doc.rect(PAGE_MARGIN, y, contentWidth, rowHeight).fill(ROW_STRIPE_HEX);
+        }
+        doc
+          .moveTo(PAGE_MARGIN, y + rowHeight)
+          .lineTo(PAGE_MARGIN + contentWidth, y + rowHeight)
+          .lineWidth(0.4)
+          .strokeColor(BORDER_SUBTLE_HEX)
+          .stroke();
+
+        doc.fillColor(INK_PRIMARY_HEX).font('Helvetica').fontSize(7.6);
+        let cursorX = PAGE_MARGIN;
+        section.columns.forEach((col, colIdx) => {
+          const w = colWidths[colIdx] ?? 60;
+          const cellValue = rowCells[colIdx] ?? '';
+          const clipped = truncateToFit(doc, cellValue, w - 8, 7.6);
+          doc.text(clipped, cursorX + 4, y + 5, {
+            width: w - 8,
+            align: col.align ?? 'left',
+            lineBreak: false,
+          });
+          cursorX += w;
+        });
+        doc.restore();
+        y += rowHeight;
+      });
+
+      y += 14;
+    }
+
+    // 4. Footer Nomor Halaman Akurat di Setiap Halaman
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i += 1) {
+      doc.switchToPage(i);
+      const footerRuleY = pageHeight - PAGE_MARGIN - 16;
+      doc.save();
+      doc
+        .moveTo(PAGE_MARGIN, footerRuleY)
+        .lineTo(PAGE_MARGIN + contentWidth, footerRuleY)
+        .lineWidth(0.6)
+        .strokeColor(BORDER_SUBTLE_HEX)
+        .stroke();
+      doc.fillColor(INK_SECONDARY_HEX).font('Helvetica').fontSize(8);
+      doc.text(
+        `Halaman ${i + 1} dari ${range.count} — ${sanitizePdfText(input.storeName)}`,
+        PAGE_MARGIN,
+        footerRuleY + 5,
+        { width: contentWidth, align: 'left', lineBreak: false },
+      );
+      doc.restore();
+    }
+
+    doc.end();
   });
+}
 
-  objects[1] = {
-    id: 2,
-    body: `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`,
-  };
-
-  objects.sort((a, b) => a.id - b.id);
-
-  let pdf = '%PDF-1.4\n';
-  const offsets: number[] = [0];
-
-  for (const obj of objects) {
-    offsets[obj.id] = Buffer.byteLength(pdf, 'utf8');
-    pdf += `${obj.id} 0 obj\n${obj.body}\nendobj\n`;
-  }
-
-  const xrefOffset = Buffer.byteLength(pdf, 'utf8');
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += '0000000000 65535 f \n';
-  for (let i = 1; i <= objects.length; i += 1) {
-    const off = offsets[i] ?? 0;
-    pdf += `${String(off).padStart(10, '0')} 00000 n \n`;
-  }
-
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-  return Buffer.from(pdf, 'utf8');
+/**
+ * Menghasilkan dokumen PDF Laporan Penjualan A4 multi-halaman via PDFKit (M12-002).
+ */
+export async function buildSalesReportPdf(input: SalesPdfReportInput): Promise<Buffer> {
+  const { summary } = input;
+  return buildStructuredReportPdf({
+    storeName: input.storeName,
+    reportTitle: 'Laporan Penjualan & Laba Kotor',
+    periodLabel: input.periodLabel,
+    printedAtLabel: input.printedAtLabel,
+    kpis: [
+      {
+        label: 'Total Penjualan',
+        value: formatRupiahPdf(summary.totalRevenue),
+        note: `${summary.totalTransactions} selesai · ${summary.voidedTransactions} batal`,
+      },
+      {
+        label: 'Total HPP (Modal)',
+        value: formatRupiahPdf(summary.totalCostOfGoodsSold),
+        note: `Rata-rata ${formatRupiahPdf(summary.avgTransactionValue)}/trx`,
+      },
+      {
+        label: 'Laba Kotor',
+        value: formatRupiahPdf(summary.grossProfit),
+        note: `Margin kotor ${summary.profitMargin}%`,
+      },
+    ],
+    sections: [
+      {
+        title: 'Detail Transaksi Penjualan',
+        columns: [
+          { header: 'No. Transaksi', weight: 19, align: 'left' },
+          { header: 'Waktu', weight: 16, align: 'left' },
+          { header: 'Kasir', weight: 15, align: 'left' },
+          { header: 'Metode', weight: 11, align: 'left' },
+          { header: 'Status', weight: 11, align: 'left' },
+          { header: 'Total', weight: 14, align: 'right' },
+          { header: 'Laba Kotor', weight: 14, align: 'right' },
+        ],
+        rows: input.rows.map((row) => [
+          row.transactionNo,
+          row.transactedAtLabel,
+          row.cashierName,
+          row.paymentMethod,
+          row.status,
+          formatRupiahPdf(row.totalAmount),
+          formatRupiahPdf(row.grossProfit),
+        ]),
+        emptyMessage: 'Tidak ada transaksi pada periode ini.',
+      },
+    ],
+  });
 }

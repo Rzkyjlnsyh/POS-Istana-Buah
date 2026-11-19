@@ -43,6 +43,8 @@ import {
   purchaseOrderListQuerySchema,
   receiveStockSchema,
   refreshTokenSchema,
+  reportExportQuerySchema,
+  reportExportTypeParamSchema,
   salesExportQuerySchema,
   salesSummaryQuerySchema,
   shiftListQuerySchema,
@@ -863,5 +865,18 @@ describe('Advanced Report Validators (M12-001)', () => {
         supplierId: '22222222-2222-4222-8222-222222222222',
       }).supplierId,
     ).toBe('22222222-2222-4222-8222-222222222222');
+
+    expect(reportExportTypeParamSchema.parse({ reportType: 'gross-profit' }).reportType).toBe(
+      'gross-profit',
+    );
+    expect(reportExportTypeParamSchema.safeParse({ reportType: 'invalid' }).success).toBe(false);
+    const exportQuery = reportExportQuerySchema.parse({
+      format: 'excel',
+      lowStockOnly: 'true',
+      search: 'Mangga',
+    });
+    expect(exportQuery.format).toBe('excel');
+    expect(exportQuery.lowStockOnly).toBe(true);
+    expect(exportQuery.search).toBe('Mangga');
   });
 });

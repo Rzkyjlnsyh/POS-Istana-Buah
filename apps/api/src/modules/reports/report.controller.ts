@@ -5,6 +5,8 @@ import type {
   CashierPerformanceQuery,
   GrossProfitReportQuery,
   ProductPerformanceQuery,
+  ReportExportQuery,
+  ReportExportTypeParam,
   SalesExportQuery,
   SalesSummaryQuery,
   StockCurrentReportQuery,
@@ -48,6 +50,16 @@ export class ReportController {
 
   exportSales = async (req: Request, res: Response): Promise<void> => {
     const file = await this.reportService.exportSalesReport(req.validatedQuery as SalesExportQuery);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.status(200).send(file.content);
+  };
+
+  exportByType = async (req: Request, res: Response): Promise<void> => {
+    const { reportType } = req.params as ReportExportTypeParam;
+    const query = req.validatedQuery as ReportExportQuery;
+    const file = await this.reportService.exportReport(reportType, query, this.wasteService);
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');

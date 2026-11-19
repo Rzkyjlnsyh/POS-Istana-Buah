@@ -4,6 +4,14 @@ import { rangeBoundarySchema } from './date-range';
 export const REPORT_GROUP_BY_VALUES = ['day', 'week', 'month'] as const;
 export const PRODUCT_PERFORMANCE_SORT_VALUES = ['revenue', 'qty'] as const;
 export const SALES_EXPORT_FORMATS = ['csv', 'excel', 'pdf'] as const;
+export const REPORT_EXPORT_TYPES = [
+  'sales',
+  'gross-profit',
+  'cashier-performance',
+  'supplier-purchases',
+  'stock-current',
+  'waste-summary',
+] as const;
 
 export const salesSummaryQuerySchema = z.object({
   startDate: rangeBoundarySchema,
@@ -69,3 +77,31 @@ export const supplierPurchasesReportQuerySchema = z.object({
 });
 
 export type SupplierPurchasesReportQuery = z.infer<typeof supplierPurchasesReportQuerySchema>;
+
+export const reportExportTypeParamSchema = z.object({
+  reportType: z.enum(REPORT_EXPORT_TYPES),
+});
+
+export type ReportExportTypeParam = z.infer<typeof reportExportTypeParamSchema>;
+
+export const reportExportQuerySchema = z.object({
+  format: z.enum(SALES_EXPORT_FORMATS).default('pdf'),
+  startDate: rangeBoundarySchema,
+  endDate: rangeBoundarySchema,
+  groupBy: z.enum(REPORT_GROUP_BY_VALUES).optional(),
+  categoryId: z.string().uuid('ID kategori tidak valid').optional(),
+  lowStockOnly: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  search: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+  cashierId: z.string().uuid('ID kasir tidak valid').optional(),
+  supplierId: z.string().uuid('ID supplier tidak valid').optional(),
+});
+
+export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>;

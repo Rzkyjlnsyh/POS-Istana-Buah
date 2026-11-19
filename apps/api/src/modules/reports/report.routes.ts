@@ -1,6 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 import { authorize } from '../../middleware/authorize';
-import { validateQuery } from '../../middleware/validate';
+import { validateParams, validateQuery } from '../../middleware/validate';
 import { asyncHandler } from '../../utils/async-handler';
 import { wasteSummaryQuerySchema } from '../waste/waste.dto';
 import type { WasteService } from '../waste/waste.service';
@@ -9,6 +9,8 @@ import {
   cashierPerformanceQuerySchema,
   grossProfitReportQuerySchema,
   productPerformanceQuerySchema,
+  reportExportQuerySchema,
+  reportExportTypeParamSchema,
   salesExportQuerySchema,
   salesSummaryQuerySchema,
   stockCurrentReportQuerySchema,
@@ -51,6 +53,12 @@ export function createReportRouter(deps: ReportRouterDependencies): Router {
     '/export/sales',
     validateQuery(salesExportQuerySchema),
     asyncHandler(controller.exportSales),
+  );
+  router.get(
+    '/export/:reportType',
+    validateParams(reportExportTypeParamSchema),
+    validateQuery(reportExportQuerySchema),
+    asyncHandler(controller.exportByType),
   );
   router.get(
     '/waste-summary',
