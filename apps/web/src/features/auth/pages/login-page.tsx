@@ -12,6 +12,7 @@ import { Label } from '../../../components/ui/label';
 import { webConfig } from '../../../config/app.config';
 import { useNetworkStatus } from '../../../hooks/use-network-status';
 import { type AuthErrorCopy, resolveAuthErrorCopy } from '../../../lib/api/api-error';
+import { warmOfflineCatalog } from '../../../lib/db/offline-catalog-service';
 import { isPathAllowedForRole } from '../../../routes/navigation-config';
 import { getDefaultRouteForRole, useAuthStore } from '../../../stores/auth-store';
 import { loginRequest } from '../api/auth-api';
@@ -115,6 +116,7 @@ export function LoginPage() {
     try {
       const session = await loginRequest(values);
       setSession(session);
+      void warmOfflineCatalog({ force: true }).catch(() => undefined);
       const fallbackRoute = getDefaultRouteForRole(session.user.role);
       const redirectState = location.state as LocationRedirectState | null;
       const candidateRoute = sanitizeInternalRedirectPath(redirectState?.from, fallbackRoute);

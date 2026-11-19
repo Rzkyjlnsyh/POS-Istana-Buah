@@ -33,6 +33,12 @@ export interface WebConfig {
   authStorageKey: string;
   offlineSyncIntervalMs: number;
   productCacheTtlMs: number;
+  offlineDbName: string;
+  offlineCryptoKeyStorageKey: string;
+  offlineCatalogPageSize: number;
+  offlineMaxCatalogPages: number;
+  offlineSyncBatchSize: number;
+  offlineMaxRetryCount: number;
   storeAddress: string;
   storePhone: string;
   receiptFooter: string;
@@ -77,6 +83,28 @@ export function buildWebConfig(env: Partial<Record<keyof ImportMetaEnv, string>>
       env.VITE_OFFLINE_SYNC_INTERVAL,
     ),
     productCacheTtlMs: parsePositiveInt('VITE_PRODUCT_CACHE_TTL', env.VITE_PRODUCT_CACHE_TTL),
+    offlineDbName: env.VITE_OFFLINE_DB_NAME?.trim() || 'istana_buah_pos_db',
+    offlineCryptoKeyStorageKey: env.VITE_OFFLINE_CRYPTO_KEY?.trim() || 'istana_buah_offline_key_v1',
+    offlineCatalogPageSize: parsePositiveInt(
+      'VITE_OFFLINE_CATALOG_PAGE_SIZE',
+      env.VITE_OFFLINE_CATALOG_PAGE_SIZE,
+      100,
+    ),
+    offlineMaxCatalogPages: parsePositiveInt(
+      'VITE_OFFLINE_MAX_CATALOG_PAGES',
+      env.VITE_OFFLINE_MAX_CATALOG_PAGES,
+      50,
+    ),
+    offlineSyncBatchSize: parsePositiveInt(
+      'VITE_OFFLINE_SYNC_BATCH_SIZE',
+      env.VITE_OFFLINE_SYNC_BATCH_SIZE,
+      20,
+    ),
+    offlineMaxRetryCount: parsePositiveInt(
+      'VITE_OFFLINE_MAX_RETRY_COUNT',
+      env.VITE_OFFLINE_MAX_RETRY_COUNT,
+      5,
+    ),
   };
 }
 

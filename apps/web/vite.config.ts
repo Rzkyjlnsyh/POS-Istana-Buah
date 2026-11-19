@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             'vendor-react': ['react', 'react-dom', 'react-router'],
             'vendor-query': ['@tanstack/react-query', 'axios', 'zustand', 'zod'],
+            'vendor-db': ['dexie'],
             'vendor-ui': ['lucide-react'],
           },
         },

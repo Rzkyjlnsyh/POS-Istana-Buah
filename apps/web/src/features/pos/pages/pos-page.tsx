@@ -7,6 +7,15 @@ import type {
 } from '@istana-buah/shared';
 import { AlertCircle, CheckCircle2, ShoppingCart } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
+import {
+  cacheActiveShift,
+  findCachedProductByBarcode,
+  getCachedActiveShift,
+  getCachedCategories,
+  queryCachedProducts,
+  upsertCachedCatalog,
+} from '../../../lib/db/offline-catalog-service';
+import { getPendingSyncCount } from '../../../lib/db/offline-transaction-service';
 import { getCategories } from '../../categories/api/category-api';
 import { getProductByBarcode, getProducts } from '../../products/api/product-api';
 import { getActiveShift } from '../../shifts/api/shift-api';
@@ -59,6 +68,7 @@ export function PosPage() {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [receiptTransaction, setReceiptTransaction] = useState<TransactionDto | null>(null);
   const [todayTransactionCount, setTodayTransactionCount] = useState<number>(0);
+  const [syncQueueCount, setSyncQueueCount] = useState<number>(0);
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
 
   const addItem = usePosCartStore((state) => state.addItem);
@@ -76,20 +86,59 @@ export function PosPage() {
     }, 4000);
   }, []);
 
-  // 1. Muat Kategori Aktif
-  const loadCategories = useCallback(async () => {
+  const refreshPendingSyncCount = useCallback(async () => {
     try {
-      const data = await getCategories({ isActive: true, limit: 50 });
-      setCategories(data);
+      const count = await getPendingSyncCount();
+      setSyncQueueCount(count);
     } catch {
-      // Abaikan error jaringan sementara
+      // Abaikan jika IndexedDB tidak tersedia
     }
   }, []);
 
-  // 2. Muat Produk Aktif
+  // 1. Muat Kategori Aktif (dengan fallback IndexedDB saat offline)
+  const loadCategories = useCallback(async () => {
+    const loadFromCache = async () => {
+      const cached = await getCachedCategories();
+      if (cached.length > 0) {
+        setCategories(cached);
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await loadFromCache().catch(() => undefined);
+      return;
+    }
+
+    try {
+      const data = await getCategories({ isActive: true, limit: 50 });
+      setCategories(data);
+      if (data.length > 0) {
+        void upsertCachedCatalog([], data).catch(() => undefined);
+      }
+    } catch {
+      await loadFromCache().catch(() => undefined);
+    }
+  }, []);
+
+  // 2. Muat Produk Aktif (dengan cache & fallback IndexedDB saat offline)
   const loadProducts = useCallback(async () => {
     setIsLoading(true);
+    const loadFromCache = async () => {
+      const cached = await queryCachedProducts({
+        categoryId: selectedCategoryId,
+        search: searchQuery,
+        isActive: true,
+        limit: 100,
+      });
+      setProducts(cached.items);
+    };
+
     try {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        await loadFromCache();
+        return;
+      }
+
       const res = await getProducts({
         categoryId: selectedCategoryId ?? undefined,
         search: searchQuery.trim() || undefined,
@@ -97,8 +146,15 @@ export function PosPage() {
         limit: 100,
       });
       setProducts(res.items);
+      if (res.items.length > 0) {
+        void upsertCachedCatalog(res.items).catch(() => undefined);
+      }
     } catch {
-      setProducts([]);
+      try {
+        await loadFromCache();
+      } catch {
+        setProducts([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -109,6 +165,9 @@ export function PosPage() {
   }, [loadCategories]);
 
   const loadTodayTransactionCount = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return;
+    }
     try {
       const range = getTodayStoreRange();
       const res = await getTransactions({
@@ -127,14 +186,30 @@ export function PosPage() {
 
   useEffect(() => {
     void loadTodayTransactionCount();
+    void refreshPendingSyncCount();
+    const loadShiftFallback = async () => {
+      try {
+        const cachedShift = await getCachedActiveShift();
+        if (cachedShift) setActiveShift(cachedShift);
+      } catch {
+        // Abaikan jika gagal memuat shift cache
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      void loadShiftFallback();
+      return;
+    }
+
     void getActiveShift()
       .then((shift) => {
-        if (shift) setActiveShift(shift);
+        if (shift) {
+          setActiveShift(shift);
+          void cacheActiveShift(shift).catch(() => undefined);
+        }
       })
-      .catch(() => {
-        // Abaikan jika offline / gagal memuat shift aktif
-      });
-  }, [loadTodayTransactionCount]);
+      .catch(loadShiftFallback);
+  }, [loadTodayTransactionCount, refreshPendingSyncCount]);
 
   useEffect(() => {
     if (!searchQuery) {
@@ -209,8 +284,17 @@ export function PosPage() {
       // Cari di memori lokal terlebih dahulu
       let matchedProduct = products.find((p) => p.barcodes?.some((b) => b.barcode === cleanCode));
 
-      // Jika tidak ditemukan di memori lokal, lookup via endpoint API
+      // Jika belum di memori, cari di indeks barcode IndexedDB
       if (!matchedProduct) {
+        try {
+          matchedProduct = await findCachedProductByBarcode(cleanCode);
+        } catch {
+          matchedProduct = undefined;
+        }
+      }
+
+      // Jika tetap belum ditemukan dan sedang online, lookup via endpoint API
+      if (!matchedProduct && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
         try {
           matchedProduct = await getProductByBarcode(cleanCode);
         } catch {
@@ -273,13 +357,33 @@ export function PosPage() {
 
   const handlePaymentSuccess = useCallback(
     (transaction: TransactionDto) => {
+      const isOfflineRecord = transaction.id.startsWith('offline-');
+      if (isOfflineRecord) {
+        setProducts((prev) =>
+          prev.map((prod) => {
+            const soldItem = transaction.items.find((it) => it.productId === prod.id);
+            if (!soldItem) return prod;
+            const nextStock = Math.max(
+              0,
+              Number((Number(prod.stockQty) - Number(soldItem.quantity)).toFixed(3)),
+            );
+            return { ...prod, stockQty: nextStock.toFixed(3) };
+          }),
+        );
+        void refreshPendingSyncCount();
+      }
       setCompletedTransaction(transaction);
       setIsSuccessModalOpen(true);
       setTodayTransactionCount((prev) => prev + 1);
       clearCart();
-      showNotification('success', `Transaksi ${transaction.transactionNo} berhasil disimpan!`);
+      showNotification(
+        'success',
+        isOfflineRecord
+          ? `Transaksi offline ${transaction.transactionNo} tersimpan di antrean sinkronisasi.`
+          : `Transaksi ${transaction.transactionNo} berhasil disimpan!`,
+      );
     },
-    [clearCart, showNotification],
+    [clearCart, refreshPendingSyncCount, showNotification],
   );
 
   const handleNewTransaction = useCallback(() => {
@@ -486,6 +590,7 @@ export function PosPage() {
       <PosPaymentModal
         isOpen={paymentModal.isOpen}
         initialMethod={paymentModal.method}
+        activeShiftId={activeShift?.id ?? null}
         onClose={() => setPaymentModal((prev) => ({ ...prev, isOpen: false }))}
         onSuccess={handlePaymentSuccess}
       />
@@ -508,7 +613,11 @@ export function PosPage() {
       />
 
       {/* Bottom Status Bar */}
-      <PosStatusBar shiftName={activeShift?.shiftNo} transactionCount={todayTransactionCount} />
+      <PosStatusBar
+        shiftName={activeShift?.shiftNo}
+        transactionCount={todayTransactionCount}
+        syncQueueCount={syncQueueCount}
+      />
     </div>
   );
 }
