@@ -36,6 +36,8 @@ import { createSupplierRouter } from './modules/suppliers/supplier.routes';
 import { SupplierService } from './modules/suppliers/supplier.service';
 import { createTransactionRouter } from './modules/transactions/transaction.routes';
 import { TransactionService } from './modules/transactions/transaction.service';
+import { createWasteRouter } from './modules/waste/waste.routes';
+import { WasteService } from './modules/waste/waste.service';
 import { AuthService } from './modules/auth/auth.service';
 import { createHealthRouter, type HealthCheckDependencies } from './utils/health.routes';
 import { JwtTokenService } from './utils/jwt';
@@ -83,6 +85,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   const supplierService = new SupplierService(db, cacheStore, effectiveCacheCfg);
   const purchaseOrderService = new PurchaseOrderService(db, cacheStore, config.timezone);
   const transactionService = new TransactionService(db, cacheStore, config.timezone);
+  const wasteService = new WasteService(db, cacheStore, effectiveCacheCfg, config.timezone);
 
   const globalRateLimiter = createRateLimiter({
     tier: 'global',
@@ -121,7 +124,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   v1Router.use('/categories', createCategoryRouter({ categoryService, authenticate }));
   v1Router.use('/dashboard', createDashboardRouter({ dashboardService, authenticate }));
   v1Router.use('/products', createProductRouter({ productService, authenticate }));
-  v1Router.use('/reports', createReportRouter({ reportService, authenticate }));
+  v1Router.use('/reports', createReportRouter({ reportService, wasteService, authenticate }));
   v1Router.use('/shifts', createShiftRouter({ shiftService, authenticate }));
   v1Router.use('/stock', createStockRouter({ stockService, authenticate }));
   v1Router.use('/suppliers', createSupplierRouter({ supplierService, authenticate }));
@@ -130,6 +133,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
     createPurchaseOrderRouter({ purchaseOrderService, authenticate }),
   );
   v1Router.use('/transactions', createTransactionRouter({ transactionService, authenticate }));
+  v1Router.use('/waste-records', createWasteRouter({ wasteService, authenticate }));
 
   app.use('/v1', v1Router);
 
