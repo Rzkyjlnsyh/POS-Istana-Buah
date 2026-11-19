@@ -2,10 +2,13 @@ import type { Request, Response } from 'express';
 import type { WasteSummaryQuery } from '../waste/waste.dto';
 import type { WasteService } from '../waste/waste.service';
 import type {
+  CashierPerformanceQuery,
+  GrossProfitReportQuery,
   ProductPerformanceQuery,
   SalesExportQuery,
   SalesSummaryQuery,
   StockCurrentReportQuery,
+  SupplierPurchasesReportQuery,
 } from './report.dto';
 import type { ReportService } from './report.service';
 
@@ -60,6 +63,36 @@ export class ReportController {
       return;
     }
     const data = await this.wasteService.getSummary(req.validatedQuery as WasteSummaryQuery);
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  };
+
+  grossProfit = async (req: Request, res: Response): Promise<void> => {
+    const data = await this.reportService.getGrossProfitReport(
+      req.validatedQuery as GrossProfitReportQuery,
+    );
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  };
+
+  cashierPerformance = async (req: Request, res: Response): Promise<void> => {
+    const data = await this.reportService.getCashierPerformance(
+      req.validatedQuery as CashierPerformanceQuery,
+    );
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  };
+
+  supplierPurchases = async (req: Request, res: Response): Promise<void> => {
+    const data = await this.reportService.getSupplierPurchases(
+      req.validatedQuery as SupplierPurchasesReportQuery,
+    );
     res.status(200).json({
       success: true,
       data,

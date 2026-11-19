@@ -45,3 +45,27 @@ export const salesExportQuerySchema = z.object({
 });
 
 export type SalesExportQuery = z.infer<typeof salesExportQuerySchema>;
+
+export const grossProfitReportQuerySchema = z.object({
+  startDate: rangeBoundarySchema,
+  endDate: rangeBoundarySchema,
+  groupBy: z.enum(REPORT_GROUP_BY_VALUES).default('day'),
+});
+
+export type GrossProfitReportQuery = z.infer<typeof grossProfitReportQuerySchema>;
+
+export const cashierPerformanceQuerySchema = z.object({
+  startDate: rangeBoundarySchema,
+  endDate: rangeBoundarySchema,
+  cashierId: z.string().uuid('ID kasir tidak valid').optional(),
+});
+
+export type CashierPerformanceQuery = z.infer<typeof cashierPerformanceQuerySchema>;
+
+export const supplierPurchasesReportQuerySchema = z.object({
+  startDate: rangeBoundarySchema,
+  endDate: rangeBoundarySchema,
+  supplierId: z.string().uuid('ID supplier tidak valid').optional(),
+});
+
+export type SupplierPurchasesReportQuery = z.infer<typeof supplierPurchasesReportQuerySchema>;

@@ -6,10 +6,13 @@ import { wasteSummaryQuerySchema } from '../waste/waste.dto';
 import type { WasteService } from '../waste/waste.service';
 import { ReportController } from './report.controller';
 import {
+  cashierPerformanceQuerySchema,
+  grossProfitReportQuerySchema,
   productPerformanceQuerySchema,
   salesExportQuerySchema,
   salesSummaryQuerySchema,
   stockCurrentReportQuerySchema,
+  supplierPurchasesReportQuerySchema,
 } from './report.dto';
 import type { ReportService } from './report.service';
 
@@ -53,6 +56,21 @@ export function createReportRouter(deps: ReportRouterDependencies): Router {
     '/waste-summary',
     validateQuery(wasteSummaryQuerySchema),
     asyncHandler(controller.wasteSummary),
+  );
+  router.get(
+    '/gross-profit',
+    validateQuery(grossProfitReportQuerySchema),
+    asyncHandler(controller.grossProfit),
+  );
+  router.get(
+    '/cashier-performance',
+    validateQuery(cashierPerformanceQuerySchema),
+    asyncHandler(controller.cashierPerformance),
+  );
+  router.get(
+    '/supplier-purchases',
+    validateQuery(supplierPurchasesReportQuerySchema),
+    asyncHandler(controller.supplierPurchases),
   );
 
   return router;

@@ -258,5 +258,62 @@ describe('M07-001 Integration: Report & Export API (/v1/reports)', () => {
     expect(pdfRes.headers['content-type']).toBe('application/pdf');
     expect((pdfRes.body as Buffer).toString('utf8').startsWith('%PDF-1.4')).toBe(true);
     expect((pdfRes.body as Buffer).toString('utf8').trim().endsWith('%%EOF')).toBe(true);
+
+    // 8. M12-001 Advanced Reports: Gross Profit (Penjualan - HPP - Penyusutan), Cashier Performance & Supplier Purchases
+    const wasteRes = await request(app).post('/v1/waste-records').set(auth('MANAGER')).send({
+      productId: mangoId,
+      wasteType: 'ROTTEN',
+      quantity: 0.5,
+      reason: 'Busuk di rak display',
+    });
+    expect(wasteRes.status).toBe(201); // 0.5 kg * 25.000 = 12.500 kerugian waste
+
+    const supplierRes = await request(app).post('/v1/suppliers').set(auth('MANAGER')).send({
+      name: 'PT Agro Buah Segar',
+      contactPerson: 'Bapak Hendra',
+      phoneNumber: '081234567890',
+    });
+    expect(supplierRes.status).toBe(201);
+
+    const poRes = await request(app)
+      .post('/v1/purchase-orders')
+      .set(auth('MANAGER'))
+      .send({
+        supplierId: supplierRes.body.data.id,
+        paidAmount: 100000,
+        items: [{ productId: mangoId, quantity: 10, unitCost: 25000 }],
+      });
+    expect(poRes.status).toBe(201); // Total 250.000, dibayar 100.000, hutang 150.000
+
+    const gpRes = await request(app).get('/v1/reports/gross-profit?groupBy=day').set(auth('OWNER'));
+    expect(gpRes.status).toBe(200);
+    // Total Revenue = 175.000, Total COGS = 112.500 -> Gross Profit = 62.500 - Waste 12.500 = 50.000
+    expect(gpRes.body.data.totalRevenue).toBe('175000.00');
+    expect(gpRes.body.data.grossProfitBeforeWaste).toBe('62500.00');
+    expect(gpRes.body.data.totalWasteLoss).toBe('12500.00');
+    expect(gpRes.body.data.netGrossProfit).toBe('50000.00');
+
+    const cashierPerfRes = await request(app)
+      .get('/v1/reports/cashier-performance')
+      .set(auth('MANAGER'));
+    expect(cashierPerfRes.status).toBe(200);
+    expect(cashierPerfRes.body.data.totalRevenue).toBe('175000.00');
+    expect(cashierPerfRes.body.data.totalTransactions).toBe(3);
+    expect(cashierPerfRes.body.data.totalVoidedTransactions).toBe(1);
+    expect(cashierPerfRes.body.data.cashiers[0].cashierName).toBe('Kasir Laporan');
+
+    const supplierPurchasesRes = await request(app)
+      .get('/v1/reports/supplier-purchases')
+      .set(auth('OWNER'));
+    expect(supplierPurchasesRes.status).toBe(200);
+    expect(supplierPurchasesRes.body.data.totalOrders).toBe(1);
+    expect(supplierPurchasesRes.body.data.totalPurchaseAmount).toBe('250000.00');
+    expect(supplierPurchasesRes.body.data.totalPaidAmount).toBe('100000.00');
+    expect(supplierPurchasesRes.body.data.totalOutstandingDebt).toBe('150000.00');
+    expect(supplierPurchasesRes.body.data.suppliers[0].supplierName).toBe('PT Agro Buah Segar');
+
+    // RBAC: CASHIER ditolak (403) pada endpoint laporan lanjutan
+    const forbiddenGp = await request(app).get('/v1/reports/gross-profit').set(auth('CASHIER'));
+    expect(forbiddenGp.status).toBe(403);
   });
 });
