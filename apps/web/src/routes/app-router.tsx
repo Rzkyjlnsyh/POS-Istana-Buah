@@ -15,6 +15,7 @@ import { ReportPage } from '../features/reports/pages/report-page';
 import { ShiftPage } from '../features/shifts/pages/shift-page';
 import { StockPage } from '../features/stock/pages/stock-page';
 import { SupplierPage } from '../features/suppliers/pages/supplier-page';
+import { WastePage } from '../features/waste/pages/waste-page';
 import { getDefaultRouteForRole, useAuthStore } from '../stores/auth-store';
 import { ROLE_LABELS_ID } from './navigation-config';
 import { RequireAuth, RequireRole } from './protected-route';
@@ -145,10 +146,7 @@ export function AppRoutes() {
             path="/waste"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
-                <ModuleWorkspaceSection
-                  title="Catatan Penyusutan (Waste)"
-                  description="Dokumentasikan buah rusak, busuk, atau susut timbangan beserta nilai kerugiannya."
-                />
+                <WastePage />
               </RequireRole>
             }
           />

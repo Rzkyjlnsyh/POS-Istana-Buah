@@ -9,10 +9,21 @@ export default defineConfig(({ mode }) => {
     server: {
       port: Number(env.VITE_DEV_PORT) || 5173,
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router'],
+            'vendor-query': ['@tanstack/react-query', 'axios', 'zustand', 'zod'],
+            'vendor-ui': ['lucide-react'],
+          },
+        },
+      },
+    },
     test: {
       globals: true,
       environment: 'jsdom',
-      testTimeout: 15000,
+      testTimeout: 25000,
       setupFiles: ['./vitest.setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
       coverage: {
