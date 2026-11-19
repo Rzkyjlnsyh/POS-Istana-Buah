@@ -1,11 +1,29 @@
 /// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      VitePWA({
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
+        registerType: 'prompt',
+        injectRegister: false,
+        manifest: false,
+        devOptions: {
+          enabled: false,
+        },
+        injectManifest: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        },
+      }),
+    ],
     server: {
       port: Number(env.VITE_DEV_PORT) || 5173,
     },
@@ -30,7 +48,7 @@ export default defineConfig(({ mode }) => {
       coverage: {
         provider: 'v8',
         include: ['src/**/*.{ts,tsx}'],
-        exclude: ['src/main.tsx', 'src/vite-env.d.ts', 'src/**/*.test.{ts,tsx}'],
+        exclude: ['src/main.tsx', 'src/sw.ts', 'src/vite-env.d.ts', 'src/**/*.test.{ts,tsx}'],
         thresholds: { lines: 70, functions: 70, branches: 70, statements: 70 },
       },
     },

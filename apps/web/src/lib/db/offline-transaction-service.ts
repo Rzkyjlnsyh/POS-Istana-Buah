@@ -7,6 +7,7 @@ import type {
 } from '@istana-buah/shared';
 import axios from 'axios';
 import { webConfig } from '../../config/app.config';
+import { requestSwBackgroundSync } from '../pwa/sw-registration';
 import { getOrCreateOfflineDeviceId } from './offline-catalog-service';
 import { decryptJsonPayload, encryptJsonPayload } from './offline-crypto';
 import {
@@ -297,6 +298,8 @@ export async function saveOfflineTransaction(
       }
     },
   );
+
+  void requestSwBackgroundSync().catch(() => undefined);
 
   return { clientId, transaction: transactionDto };
 }
