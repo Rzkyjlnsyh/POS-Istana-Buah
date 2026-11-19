@@ -39,6 +39,9 @@ export interface WebConfig {
   offlineMaxCatalogPages: number;
   offlineSyncBatchSize: number;
   offlineMaxRetryCount: number;
+  offlineBackoffBaseMs: number;
+  offlineBackoffMaxMs: number;
+  offlineMaxWarningHours: number;
   storeAddress: string;
   storePhone: string;
   receiptFooter: string;
@@ -104,6 +107,21 @@ export function buildWebConfig(env: Partial<Record<keyof ImportMetaEnv, string>>
       'VITE_OFFLINE_MAX_RETRY_COUNT',
       env.VITE_OFFLINE_MAX_RETRY_COUNT,
       5,
+    ),
+    offlineBackoffBaseMs: parsePositiveInt(
+      'VITE_OFFLINE_BACKOFF_BASE_MS',
+      env.VITE_OFFLINE_BACKOFF_BASE_MS,
+      2000,
+    ),
+    offlineBackoffMaxMs: parsePositiveInt(
+      'VITE_OFFLINE_BACKOFF_MAX_MS',
+      env.VITE_OFFLINE_BACKOFF_MAX_MS,
+      300000,
+    ),
+    offlineMaxWarningHours: parsePositiveInt(
+      'VITE_OFFLINE_MAX_WARNING_HOURS',
+      env.VITE_OFFLINE_MAX_WARNING_HOURS,
+      20,
     ),
   };
 }

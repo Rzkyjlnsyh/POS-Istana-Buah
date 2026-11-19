@@ -17,6 +17,7 @@ import { cn } from '../../lib/cn';
 import { ROLE_LABELS_ID } from '../../routes/navigation-config';
 import { useAuthStore } from '../../stores/auth-store';
 import { OrchardBrandMark } from '../common/brand-mark';
+import { OfflineSyncStatusButton } from '../common/offline-sync-status';
 import { Button, buttonVariants } from '../ui/button';
 
 const posClockFormatter = new Intl.DateTimeFormat('id-ID', {
@@ -98,6 +99,8 @@ export function PosShellLayout() {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <OfflineSyncStatusButton />
+
             <span
               className={cn(
                 'hidden items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold md:inline-flex',

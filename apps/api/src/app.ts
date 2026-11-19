@@ -36,6 +36,8 @@ import { createPurchaseOrderRouter } from './modules/suppliers/purchase-order.ro
 import { PurchaseOrderService } from './modules/suppliers/purchase-order.service';
 import { createSupplierRouter } from './modules/suppliers/supplier.routes';
 import { SupplierService } from './modules/suppliers/supplier.service';
+import { createSyncRouter } from './modules/sync/sync.routes';
+import { SyncService } from './modules/sync/sync.service';
 import { createTransactionRouter } from './modules/transactions/transaction.routes';
 import { TransactionService } from './modules/transactions/transaction.service';
 import { createWasteRouter } from './modules/waste/waste.routes';
@@ -88,6 +90,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   const supplierService = new SupplierService(db, cacheStore, effectiveCacheCfg);
   const purchaseOrderService = new PurchaseOrderService(db, cacheStore, config.timezone);
   const transactionService = new TransactionService(db, cacheStore, config.timezone);
+  const syncService = new SyncService(db, transactionService);
   const wasteService = new WasteService(db, cacheStore, effectiveCacheCfg, config.timezone);
 
   const globalRateLimiter = createRateLimiter({
@@ -131,6 +134,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   v1Router.use('/shifts', createShiftRouter({ shiftService, authenticate }));
   v1Router.use('/stock', createStockRouter({ stockService, authenticate }));
   v1Router.use('/suppliers', createSupplierRouter({ supplierService, authenticate }));
+  v1Router.use('/sync', createSyncRouter({ syncService, authenticate }));
   v1Router.use(
     '/purchase-orders',
     createPurchaseOrderRouter({ purchaseOrderService, authenticate }),

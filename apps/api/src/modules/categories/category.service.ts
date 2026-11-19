@@ -24,11 +24,11 @@ type CategoryWithCount = Prisma.CategoryGetPayload<{
   include: { _count: { select: { products: true } } };
 }>;
 
-const WITH_PRODUCT_COUNT = {
+export const WITH_PRODUCT_COUNT = {
   _count: { select: { products: { where: { deletedAt: null } } } },
 } satisfies Prisma.CategoryInclude;
 
-function toDto(row: CategoryWithCount): CategoryDto {
+export function toCategoryDto(row: CategoryWithCount): CategoryDto {
   return {
     id: row.id,
     name: row.name,
@@ -39,6 +39,10 @@ function toDto(row: CategoryWithCount): CategoryDto {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function toDto(row: CategoryWithCount): CategoryDto {
+  return toCategoryDto(row);
 }
 
 function isUniqueViolation(error: unknown): boolean {

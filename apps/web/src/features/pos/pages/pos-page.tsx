@@ -15,7 +15,7 @@ import {
   queryCachedProducts,
   upsertCachedCatalog,
 } from '../../../lib/db/offline-catalog-service';
-import { getPendingSyncCount } from '../../../lib/db/offline-transaction-service';
+import { useOfflineSyncStore } from '../../../stores/offline-sync-store';
 import { getCategories } from '../../categories/api/category-api';
 import { getProductByBarcode, getProducts } from '../../products/api/product-api';
 import { getActiveShift } from '../../shifts/api/shift-api';
@@ -68,7 +68,8 @@ export function PosPage() {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [receiptTransaction, setReceiptTransaction] = useState<TransactionDto | null>(null);
   const [todayTransactionCount, setTodayTransactionCount] = useState<number>(0);
-  const [syncQueueCount, setSyncQueueCount] = useState<number>(0);
+  const syncQueueCount = useOfflineSyncStore((state) => state.pendingCount);
+  const refreshPendingSyncCount = useOfflineSyncStore((state) => state.refreshStatus);
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
 
   const addItem = usePosCartStore((state) => state.addItem);
@@ -84,15 +85,6 @@ export function PosPage() {
     setTimeout(() => {
       setScanNotification((prev) => (prev?.message === message ? null : prev));
     }, 4000);
-  }, []);
-
-  const refreshPendingSyncCount = useCallback(async () => {
-    try {
-      const count = await getPendingSyncCount();
-      setSyncQueueCount(count);
-    } catch {
-      // Abaikan jika IndexedDB tidak tersedia
-    }
   }, []);
 
   // 1. Muat Kategori Aktif (dengan fallback IndexedDB saat offline)

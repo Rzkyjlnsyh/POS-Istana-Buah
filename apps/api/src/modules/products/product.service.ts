@@ -47,7 +47,7 @@ type ProductWithRelations = Prisma.ProductGetPayload<{
   };
 }>;
 
-const PRODUCT_INCLUDE = {
+export const PRODUCT_INCLUDE = {
   category: { select: { id: true, name: true } },
   barcodes: {
     select: { id: true, barcode: true, isPrimary: true },
@@ -55,7 +55,7 @@ const PRODUCT_INCLUDE = {
   },
 } satisfies Prisma.ProductInclude;
 
-function toDto(row: ProductWithRelations, role: UserRole): ProductDto {
+export function toProductDto(row: ProductWithRelations, role: UserRole): ProductDto {
   const isCashier = role === 'CASHIER';
   return {
     id: row.id,
@@ -83,6 +83,10 @@ function toDto(row: ProductWithRelations, role: UserRole): ProductDto {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function toDto(row: ProductWithRelations, role: UserRole): ProductDto {
+  return toProductDto(row, role);
 }
 
 /**
