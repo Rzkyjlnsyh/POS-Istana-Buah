@@ -2166,6 +2166,24 @@ Proyek Istana Buah
 | M12-003 | FE: Laporan Lanjutan | - Halaman laporan keuntungan | P1 | 5h | M12-001 | Grafik margin |
 | | | - Filter dan komparasi periode | P1 | 4h | - | Komparasi akurat |
 
+**Checklist Progres FASE 2**
+
+| ID | Status | Bukti |
+|----|--------|-------|
+| M08-001 | ✅ DONE | Backend Dashboard API (`GET /v1/dashboard/summary` KPI omzet/transaksi/laba kotor hari ini vs kemarin, shift terbuka, peringatan stok menipis via `StockService`, produk terlaris hari ini, hutang PO & waste hari ini; `GET /v1/dashboard/charts` timeline kontinyu 7–90 hari + breakdown pembayaran & kategori; cache Redis `DASHBOARD` berversi komposit & auto-bust saat transaksi/stok/produk/PO/shift; RBAC ketat `OWNER`/`MANAGER` 403 `CASHIER`); terverifikasi (`task-6512`): 43/43 shared (`99.79%`), 195/195 api (`98.51%`, `modules/dashboard` `98.1%`), 194/194 web (`91.67%`), format/lint/typecheck/build/audit exit `0`. |
+| M08-002 | ⏳ TODO | - |
+| M09-001 | ⏳ TODO | - |
+| M09-002 | ⏳ TODO | - |
+| M10-001 | ⏳ TODO | - |
+| M10-002 | ⏳ TODO | - |
+| M11-001 | ⏳ TODO | - |
+| M11-002 | ⏳ TODO | - |
+| M11-003 | ⏳ TODO | - |
+| M11-004 | ⏳ TODO | - |
+| M12-001 | ⏳ TODO | - |
+| M12-002 | ⏳ TODO | - |
+| M12-003 | ⏳ TODO | - |
+
 ---
 
 #### FASE 3: Hardening & Launch

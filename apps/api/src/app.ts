@@ -20,6 +20,8 @@ import { requestLogger } from './middleware/requestLogger';
 import { createAuthRouter } from './modules/auth/auth.routes';
 import { createCategoryRouter } from './modules/categories/category.routes';
 import { CategoryService } from './modules/categories/category.service';
+import { createDashboardRouter } from './modules/dashboard/dashboard.routes';
+import { DashboardService } from './modules/dashboard/dashboard.service';
 import { createProductRouter } from './modules/products/product.routes';
 import { ProductService } from './modules/products/product.service';
 import { createReportRouter } from './modules/reports/report.routes';
@@ -69,8 +71,15 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
     config.timezone,
     config.appName,
   );
-  const shiftService = new ShiftService(db, config.timezone);
+  const shiftService = new ShiftService(db, config.timezone, cacheStore);
   const stockService = new StockService(db, cacheStore, effectiveCacheCfg, config.timezone);
+  const dashboardService = new DashboardService(
+    db,
+    cacheStore,
+    effectiveCacheCfg,
+    config.timezone,
+    stockService,
+  );
   const supplierService = new SupplierService(db, cacheStore, effectiveCacheCfg);
   const purchaseOrderService = new PurchaseOrderService(db, cacheStore, config.timezone);
   const transactionService = new TransactionService(db, cacheStore, config.timezone);
@@ -110,6 +119,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   );
 
   v1Router.use('/categories', createCategoryRouter({ categoryService, authenticate }));
+  v1Router.use('/dashboard', createDashboardRouter({ dashboardService, authenticate }));
   v1Router.use('/products', createProductRouter({ productService, authenticate }));
   v1Router.use('/reports', createReportRouter({ reportService, authenticate }));
   v1Router.use('/shifts', createShiftRouter({ shiftService, authenticate }));

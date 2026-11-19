@@ -7,6 +7,7 @@ export const CACHE_NAMESPACES = {
   STOCK: 'stock',
   SUPPLIERS: 'suppliers',
   REPORTS: 'reports',
+  DASHBOARD: 'dashboard',
 } as const;
 
 /**
@@ -19,6 +20,25 @@ export interface CacheStore {
   /** Menaikkan versi namespace secara atomik sehingga seluruh key lama otomatis usang (bust on write). */
   bumpVersion(namespace: string): Promise<number>;
   getVersion(namespace: string): Promise<number>;
+}
+
+export async function readJsonCache<T>(cache: CacheStore, key: string): Promise<T | null> {
+  const raw = await cache.get(key);
+  if (raw === null) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeJsonCache(
+  cache: CacheStore,
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<void> {
+  await cache.set(key, JSON.stringify(value), ttlSeconds);
 }
 
 export class RedisCacheStore implements CacheStore {

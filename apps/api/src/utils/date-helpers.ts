@@ -66,6 +66,54 @@ export function getMonthKeyInTimeZone(date: Date, timeZone: string): string {
 }
 
 /**
+ * Mengonversi tanggal kalender `YYYY-MM-DD` pada zona waktu toko (tanpa hardcode offset)
+ * menjadi rentang UTC `[start, end]` akurat untuk kueri transaksi & shift harian.
+ */
+export function getZonedDayRangeUtc(
+  ymdDashed: string,
+  timeZone: string,
+): { start: Date; end: Date } {
+  const [yStr, mStr, dStr] = ymdDashed.split('-');
+  const year = Number(yStr);
+  const month = Number(mStr);
+  const day = Number(dStr);
+
+  const probeUtc = Date.UTC(year, month - 1, day, 12, 0, 0, 0);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(probeUtc));
+
+  const pick = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((p) => p.type === type)?.value ?? '0');
+
+  const zonedAsUtc = Date.UTC(
+    pick('year'),
+    pick('month') - 1,
+    pick('day'),
+    pick('hour'),
+    pick('minute'),
+    pick('second'),
+    0,
+  );
+  const offsetMs = zonedAsUtc - probeUtc;
+
+  const startMs = Date.UTC(year, month - 1, day, 0, 0, 0, 0) - offsetMs;
+  const endMs = Date.UTC(year, month - 1, day, 23, 59, 59, 999) - offsetMs;
+
+  return {
+    start: new Date(startMs),
+    end: new Date(endMs),
+  };
+}
+
+/**
  * Menghasilkan nomor referensi berurutan harian (`PREFIX-YYYYMMDD-01`) dari daftar referensi eksis.
  */
 export function buildNextDailyReference(

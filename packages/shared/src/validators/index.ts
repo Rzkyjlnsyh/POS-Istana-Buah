@@ -1,5 +1,6 @@
 export * from './auth';
 export * from './category';
+export * from './dashboard';
 export * from './date-range';
 export * from './pagination';
 export * from './product';
