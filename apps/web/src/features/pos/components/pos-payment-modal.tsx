@@ -13,6 +13,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CreateTransactionInput, PaymentMethod, TransactionDto } from '@istana-buah/shared';
 import { Button } from '../../../components/ui/button';
 import { Modal } from '../../../components/ui/modal';
+import {
+  OfflineStockError,
+  isNetworkFailureError,
+  saveOfflineTransaction,
+} from '../../../lib/db/offline-transaction-service';
+import { useAuthStore } from '../../../stores/auth-store';
 import { createTransaction } from '../api/transaction-api';
 import { usePosCartStore } from '../stores/pos-cart-store';
 import { formatRupiah } from '../utils/formatters';
@@ -22,6 +28,7 @@ export interface PosPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialMethod?: PaymentMethod;
+  activeShiftId?: string | null;
   onSuccess: (transaction: TransactionDto) => void;
 }
 
@@ -63,8 +70,10 @@ export function PosPaymentModal({
   isOpen,
   onClose,
   initialMethod = 'CASH',
+  activeShiftId = null,
   onSuccess,
 }: PosPaymentModalProps) {
+  const user = useAuthStore((state) => state.user);
   const items = usePosCartStore((state) => state.items);
   const globalDiscount = usePosCartStore((state) => state.globalDiscount);
   const getTotalAmount = usePosCartStore((state) => state.getTotalAmount);
@@ -220,15 +229,53 @@ export function PosPaymentModal({
     };
 
     try {
-      const createdTx = await createTransaction(transactionPayload);
-      onSuccess(createdTx);
-      onClose();
+      const saveOfflineFallback = async () => {
+        const saved = await saveOfflineTransaction({
+          input: transactionPayload,
+          cartItems: items.map((item) => ({
+            productId: item.productId,
+            name: item.name,
+            productType: item.productType,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discountAmount: item.discountAmount,
+          })),
+          cashierId: user?.id ?? 'offline-cashier',
+          cashierName: user?.fullName ?? 'Kasir Offline',
+          shiftId: activeShiftId,
+        });
+        onSuccess(saved.transaction);
+        onClose();
+      };
+
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        await saveOfflineFallback();
+        return;
+      }
+
+      try {
+        const createdTx = await createTransaction(transactionPayload);
+        onSuccess(createdTx);
+        onClose();
+      } catch (err: unknown) {
+        if (isNetworkFailureError(err)) {
+          await saveOfflineFallback();
+          return;
+        }
+        throw err;
+      }
     } catch (err: unknown) {
-      const errorMsg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-          : null;
-      setErrorMessage(errorMsg ?? 'Gagal memproses transaksi. Periksa koneksi internet atau stok.');
+      if (err instanceof OfflineStockError) {
+        setErrorMessage(err.message);
+      } else {
+        const errorMsg =
+          err && typeof err === 'object' && 'response' in err
+            ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+            : null;
+        setErrorMessage(
+          errorMsg ?? 'Gagal memproses transaksi. Periksa koneksi internet atau stok.',
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -241,6 +288,9 @@ export function PosPaymentModal({
     globalDiscount,
     transferReference,
     selectedBank,
+    user?.id,
+    user?.fullName,
+    activeShiftId,
     onSuccess,
     onClose,
   ]);

@@ -11,6 +11,12 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_STORAGE_KEY?: string;
   readonly VITE_OFFLINE_SYNC_INTERVAL: string;
   readonly VITE_PRODUCT_CACHE_TTL: string;
+  readonly VITE_OFFLINE_DB_NAME?: string;
+  readonly VITE_OFFLINE_CRYPTO_KEY?: string;
+  readonly VITE_OFFLINE_CATALOG_PAGE_SIZE?: string;
+  readonly VITE_OFFLINE_MAX_CATALOG_PAGES?: string;
+  readonly VITE_OFFLINE_SYNC_BATCH_SIZE?: string;
+  readonly VITE_OFFLINE_MAX_RETRY_COUNT?: string;
   readonly VITE_STORE_ADDRESS?: string;
   readonly VITE_STORE_PHONE?: string;
   readonly VITE_RECEIPT_FOOTER?: string;
