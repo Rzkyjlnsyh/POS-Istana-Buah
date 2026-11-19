@@ -1,7 +1,9 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import path from 'node:path';
 import readline from 'node:readline';
+import { buildRedisConfig } from '../../src/config/redis.config';
 import { createPrismaClient, disconnectDatabase } from '../../src/lib/prisma';
+import { createRedisClient, disconnectRedis } from '../../src/lib/redis';
 
 export interface EphemeralServicesHandle {
   databaseUrl: string;
@@ -10,9 +12,8 @@ export interface EphemeralServicesHandle {
 }
 
 /**
- * Menyalakan PostgreSQL 16 + Redis sementara melalui worker ESM terisolasi
- * (atau menggunakan container service `TEST_DATABASE_URL` & `TEST_REDIS_URL` di CI)
- * serta menjalankan `prisma migrate deploy` pada database tersebut.
+ * Menyiapkan database PostgreSQL 16 + Redis bersih untuk satu suite integration test
+ * dan menjalankan `prisma migrate deploy`.
  */
 export async function startEphemeralServices(): Promise<EphemeralServicesHandle> {
   const repoRoot = path.resolve(__dirname, '../../../..');
@@ -29,6 +30,20 @@ export async function startEphemeralServices(): Promise<EphemeralServicesHandle>
       await resetClient.$executeRaw`CREATE SCHEMA public`;
     } finally {
       await disconnectDatabase(resetClient);
+    }
+
+    const flushRedis = createRedisClient(
+      buildRedisConfig({
+        REDIS_URL: externalRedisUrl,
+        REDIS_MAX_RETRIES: '2',
+        REDIS_CONNECT_TIMEOUT_MS: '5000',
+      }),
+    );
+    try {
+      await flushRedis.connect();
+      await flushRedis.flushdb();
+    } finally {
+      await disconnectRedis(flushRedis);
     }
 
     execFileSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {

@@ -14,6 +14,7 @@ export default tseslint.config(
       '**/.vite/**',
       'apps/api/prisma/migrations/**',
       '.agent/**',
+      '**/.impeccable/**',
       '.vscode/**',
     ],
   },

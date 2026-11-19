@@ -22,6 +22,7 @@
     "commitlint": "commitlint",
     "dev": "pnpm -r --parallel --filter @istana-buah/api --filter @istana-buah/web dev",
     "dev:services": "node scripts/dev-services.mjs",
+    "generate:jwt-keys": "node scripts/generate-jwt-keys.mjs",
     "db:generate": "pnpm --filter @istana-buah/api db:generate",
     "db:migrate": "pnpm --filter @istana-buah/api db:migrate:deploy",
     "db:seed": "pnpm --filter @istana-buah/api db:seed",

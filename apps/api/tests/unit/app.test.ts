@@ -3,12 +3,13 @@ import express from 'express';
 import { createApp } from '../../src/app';
 import { appConfig, buildConfig } from '../../src/config/app.config';
 import { disconnectDatabase } from '../../src/lib/prisma';
-import { redis } from '../../src/lib/redis';
+import { disconnectRedis, redis } from '../../src/lib/redis';
 import { errorHandler } from '../../src/middleware/errorHandler';
 import { AppError } from '../../src/utils/app-error';
 
 afterAll(async () => {
-  redis.disconnect();
+  await disconnectRedis(redis);
+  redis.disconnect(false);
   await disconnectDatabase();
 });
 
@@ -99,7 +100,7 @@ describe('API scaffold & health check', () => {
   it('body melebihi batas -> 413 PAYLOAD_TOO_LARGE', async () => {
     const res = await request(app)
       .post('/health')
-      .send({ blob: 'x'.repeat(5000) });
+      .send({ blob: 'x'.repeat(1_100_000) });
     expect(res.status).toBe(413);
     expect(res.body.error.code).toBe('PAYLOAD_TOO_LARGE');
   });

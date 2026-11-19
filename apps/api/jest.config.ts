@@ -3,8 +3,11 @@ import type { Config } from 'jest';
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  maxWorkers: 1,
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
+  globalSetup: '<rootDir>/tests/global-setup.ts',
+  globalTeardown: '<rootDir>/tests/global-teardown.ts',
   setupFiles: ['<rootDir>/tests/setup-env.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',

@@ -32,3 +32,9 @@ export type WasteType = (typeof WASTE_TYPES)[number];
 
 export const SHIFT_STATUSES = ['OPEN', 'CLOSED'] as const;
 export type ShiftStatus = (typeof SHIFT_STATUSES)[number];
+
+export const STOCK_OPNAME_STATUSES = ['DRAFT', 'COMPLETED'] as const;
+export type StockOpnameStatus = (typeof STOCK_OPNAME_STATUSES)[number];
+
+export const PURCHASE_ORDER_STATUSES = ['PENDING', 'RECEIVED', 'PARTIAL', 'CANCELLED'] as const;
+export type PurchaseOrderStatus = (typeof PURCHASE_ORDER_STATUSES)[number];
