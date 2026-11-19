@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router';
+import { PwaInstallPrompt } from './components/common/pwa-install-prompt';
 import { AppRoutes } from './routes/app-router';
 
 const defaultQueryClient = new QueryClient({
@@ -17,6 +18,7 @@ export default function App() {
     <QueryClientProvider client={defaultQueryClient}>
       <BrowserRouter>
         <AppRoutes />
+        <PwaInstallPrompt />
       </BrowserRouter>
     </QueryClientProvider>
   );

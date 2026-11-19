@@ -15,6 +15,13 @@ export default defineConfig(({ mode }) => {
         registerType: 'prompt',
         injectRegister: false,
         manifest: false,
+        includeAssets: [
+          'manifest.json',
+          'icons/icon-192.png',
+          'icons/icon-512.png',
+          'icons/icon-maskable-512.png',
+          'icons/icon.svg',
+        ],
         devOptions: {
           enabled: false,
         },
