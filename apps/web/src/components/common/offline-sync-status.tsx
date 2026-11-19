@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { webConfig } from '../../config/app.config';
 import { formatRupiah } from '../../features/pos/utils/formatters';
 import { useNetworkStatus } from '../../hooks/use-network-status';
+import { subscribeSwSyncEvents } from '../../lib/pwa/sw-registration';
 import { useAuthStore } from '../../stores/auth-store';
 import { useOfflineSyncStore } from '../../stores/offline-sync-store';
 import { cn } from '../../lib/cn';
@@ -28,6 +29,14 @@ export function useOfflineSyncLifecycle() {
       void syncNow(true).catch(() => undefined);
     };
 
+    const unsubscribeSw = subscribeSwSyncEvents((payload) => {
+      if (payload.type === 'BG_SYNC_REQUESTED') {
+        void syncNow(true).catch(() => undefined);
+      } else if (payload.type === 'BG_SYNC_COMPLETED') {
+        void refreshStatus();
+      }
+    });
+
     window.addEventListener('online', handleOnline);
     const intervalId = window.setInterval(() => {
       if (navigator.onLine && useOfflineSyncStore.getState().pendingCount > 0) {
@@ -36,6 +45,7 @@ export function useOfflineSyncLifecycle() {
     }, webConfig.offlineSyncIntervalMs);
 
     return () => {
+      unsubscribeSw();
       window.removeEventListener('online', handleOnline);
       window.clearInterval(intervalId);
     };
