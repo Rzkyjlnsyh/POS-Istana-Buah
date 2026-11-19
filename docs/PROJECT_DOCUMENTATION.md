@@ -2171,7 +2171,7 @@ Proyek Istana Buah
 | ID | Status | Bukti |
 |----|--------|-------|
 | M08-001 | ✅ DONE | Backend Dashboard API (`GET /v1/dashboard/summary` KPI omzet/transaksi/laba kotor hari ini vs kemarin, shift terbuka, peringatan stok menipis via `StockService`, produk terlaris hari ini, hutang PO & waste hari ini; `GET /v1/dashboard/charts` timeline kontinyu 7–90 hari + breakdown pembayaran & kategori; cache Redis `DASHBOARD` berversi komposit & auto-bust saat transaksi/stok/produk/PO/shift; RBAC ketat `OWNER`/`MANAGER` 403 `CASHIER`); terverifikasi (`task-6512`): 43/43 shared (`99.79%`), 195/195 api (`98.51%`, `modules/dashboard` `98.1%`), 194/194 web (`91.67%`), format/lint/typecheck/build/audit exit `0`. |
-| M08-002 | ⏳ TODO | - |
+| M08-002 | ✅ DONE | Frontend Dashboard Owner & Manajer (`DashboardPage` pada `/dashboard` dengan judul `Ringkasan Operasional Toko`; `DashboardKpiStrip` omzet hari ini vs kemarin + persentase perbandingan, laba kotor/margin/HPP, transaksi & rata-rata struk, peringatan SKU menipis/habis & hutang PO; grafik interaktif 7/14/30 hari berbagi `SalesTrendChart` + kontribusi kategori; `DashboardOperationalPanels` produk terlaris hari ini, alert merah stok kritis, daftar shift aktif, serta responsif 375px–1440px). Terverifikasi (`task-6569`): `impeccable detect` 0 temuan (`[]`), `axe-core` 0 pelanggaran, 43/43 shared (`99.79%`), 197/197 web (`91.83%`, `dashboard-api.ts` `100%`), 195/195 api (`98.51%`), format/lint/typecheck/build/audit exit `0`. |
 | M09-001 | ⏳ TODO | - |
 | M09-002 | ⏳ TODO | - |
 | M10-001 | ⏳ TODO | - |

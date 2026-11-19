@@ -7,6 +7,7 @@ import { bootstrapAuthSession } from '../features/auth/api/auth-api';
 import { ChangePasswordPage } from '../features/auth/pages/change-password-page';
 import { LoginPage } from '../features/auth/pages/login-page';
 import { CategoryPage } from '../features/categories/pages/category-page';
+import { DashboardPage } from '../features/dashboard/pages/dashboard-page';
 import { PosPage } from '../features/pos/pages/pos-page';
 import { TransactionHistoryPage } from '../features/pos/pages/transaction-history-page';
 import { ProductPage } from '../features/products/pages/product-page';
@@ -96,10 +97,7 @@ export function AppRoutes() {
             path="/dashboard"
             element={
               <RequireRole allowedRoles={['OWNER', 'MANAGER']}>
-                <ModuleWorkspaceSection
-                  title="Ringkasan Operasional Toko"
-                  description="Pantau omset harian, transaksi aktif, dan ketersediaan stok buah segar secara real-time."
-                />
+                <DashboardPage />
               </RequireRole>
             }
           />
