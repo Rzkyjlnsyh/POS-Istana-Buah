@@ -9,6 +9,7 @@ import {
   batchImportProductItemSchema,
   batchImportProductsSchema,
   calculateEan13CheckDigit,
+  cashierPerformanceQuerySchema,
   categoryListQuerySchema,
   changePasswordSchema,
   closeShiftSchema,
@@ -28,6 +29,7 @@ import {
   escapeCsvCell,
   generateBarcodeQuerySchema,
   generateProductCsvTemplate,
+  grossProfitReportQuerySchema,
   isValidEan13,
   loginSchema,
   logoutSchema,
@@ -47,6 +49,7 @@ import {
   stockCurrentReportQuerySchema,
   stockMovementListQuerySchema,
   supplierListQuerySchema,
+  supplierPurchasesReportQuerySchema,
   syncBatchBodySchema,
   syncPullQuerySchema,
   transactionListQuerySchema,
@@ -842,5 +845,23 @@ describe('Sync Validators (M11-002)', () => {
     });
     expect(parsedPullFiltered.types).toEqual(['products']);
     expect(syncPullQuerySchema.safeParse({ types: 'unknown_table' }).success).toBe(false);
+  });
+});
+
+describe('Advanced Report Validators (M12-001)', () => {
+  it('memvalidasi grossProfitReportQuerySchema, cashierPerformanceQuerySchema & supplierPurchasesReportQuerySchema', () => {
+    expect(grossProfitReportQuerySchema.parse({}).groupBy).toBe('day');
+    expect(grossProfitReportQuerySchema.parse({ groupBy: 'week' }).groupBy).toBe('week');
+    expect(
+      cashierPerformanceQuerySchema.parse({
+        cashierId: '11111111-1111-4111-8111-111111111111',
+      }).cashierId,
+    ).toBe('11111111-1111-4111-8111-111111111111');
+    expect(cashierPerformanceQuerySchema.safeParse({ cashierId: 'invalid' }).success).toBe(false);
+    expect(
+      supplierPurchasesReportQuerySchema.parse({
+        supplierId: '22222222-2222-4222-8222-222222222222',
+      }).supplierId,
+    ).toBe('22222222-2222-4222-8222-222222222222');
   });
 });

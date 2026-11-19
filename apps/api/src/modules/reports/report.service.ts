@@ -1,7 +1,11 @@
 import {
   ERROR_CODES,
+  type CashierPerformanceItemDto,
+  type CashierPerformanceReportDto,
   type CurrentStockItemDto,
   type CurrentStockReportDto,
+  type GrossProfitReportDto,
+  type GrossProfitTimelinePointDto,
   type PaymentBreakdownPointDto,
   type PaymentMethod,
   type ProductPerformanceItemDto,
@@ -9,6 +13,9 @@ import {
   type ReportGroupBy,
   type SalesSummaryReportDto,
   type SalesTimelinePointDto,
+  type ShiftPerformanceItemDto,
+  type SupplierPurchaseReportDto,
+  type SupplierPurchaseReportItemDto,
 } from '@istana-buah/shared';
 import type { PrismaClient } from '@prisma/client';
 import type { CacheConfig } from '../../config/cache.config';
@@ -23,12 +30,15 @@ import {
 } from '../../utils/date-helpers';
 import { buildSalesReportPdf } from './pdf-report-builder';
 import type {
+  CashierPerformanceQuery,
+  GrossProfitReportQuery,
   ProductPerformanceQuery,
   SalesExportFileResult,
   SalesExportQuery,
   SalesExportTransactionRow,
   SalesSummaryQuery,
   StockCurrentReportServiceQuery,
+  SupplierPurchasesReportQuery,
 } from './report.dto';
 import { buildSalesCsvBuffer, buildSalesExcelBuffer } from './report-export-formatter';
 
@@ -51,6 +61,15 @@ function formatMoney(value: number): string {
 function formatMarginPercent(grossProfit: number, revenue: number): string {
   if (revenue <= 0) return '0.00';
   return ((grossProfit / revenue) * 100).toFixed(2);
+}
+
+function formatGrowthPercent(current: number, previous: number): string {
+  if (Math.abs(previous) < 0.005) {
+    if (current > 0) return '100.00';
+    if (current < 0) return '-100.00';
+    return '0.00';
+  }
+  return (((current - previous) / Math.abs(previous)) * 100).toFixed(2);
 }
 
 function formatStockDecimal(value: number): string {
@@ -138,6 +157,16 @@ export class ReportService {
 
   private async writeJsonCache(key: string, payload: unknown): Promise<void> {
     await this.cache.set(key, JSON.stringify(payload), this.cacheCfg.productTtlSeconds);
+  }
+
+  private async getCompositeAdvancedVersion(): Promise<string> {
+    const [r, w, s, d] = await Promise.all([
+      this.cache.getVersion(CACHE_NAMESPACES.REPORTS),
+      this.cache.getVersion(CACHE_NAMESPACES.WASTE),
+      this.cache.getVersion(CACHE_NAMESPACES.SUPPLIERS),
+      this.cache.getVersion(CACHE_NAMESPACES.DASHBOARD),
+    ]);
+    return `v${r}:${w}:${s}:${d}`;
   }
 
   /**
@@ -554,5 +583,488 @@ export class ReportService {
         rows: exportRows,
       }),
     };
+  }
+
+  /**
+   * Laporan Keuntungan Kotor Bersih (Penjualan - HPP - Penyusutan) beserta komparasi periode (M12-001 / FR-RPT-03).
+   */
+  async getGrossProfitReport(query: GrossProfitReportQuery): Promise<GrossProfitReportDto> {
+    const window = this.resolveDateWindow(query.startDate, query.endDate);
+    const groupBy: ReportGroupBy = query.groupBy ?? 'day';
+
+    const compositeVer = await this.getCompositeAdvancedVersion();
+    const cacheKey = `${REPORT_CACHE_NAMESPACE}:${compositeVer}:gross-profit:${window.startIso}:${window.endIso}:${groupBy}`;
+    const cached = await this.readJsonCache<GrossProfitReportDto>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const daySpanCount = Math.max(
+      1,
+      Math.round((window.end.getTime() - window.start.getTime()) / (24 * 60 * 60 * 1000)),
+    );
+    const prevEndYmd = shiftYmdDashed(window.startYmd, -1);
+    const prevStartYmd = shiftYmdDashed(window.startYmd, -daySpanCount);
+    const prevStart = parseRangeBoundary(prevStartYmd, 'start');
+    const prevEnd = parseRangeBoundary(prevEndYmd, 'end');
+
+    const [currentTxs, currentWastes, prevTxs, prevWastes] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where: {
+          transactedAt: { gte: window.start, lte: window.end },
+          status: 'COMPLETED',
+        },
+        select: {
+          totalAmount: true,
+          transactedAt: true,
+          items: { select: { quantity: true, unitCost: true } },
+        },
+        orderBy: { transactedAt: 'asc' },
+      }),
+      this.prisma.wasteRecord
+        ? this.prisma.wasteRecord.findMany({
+            where: { recordedAt: { gte: window.start, lte: window.end } },
+            select: { estimatedCost: true, recordedAt: true },
+            orderBy: { recordedAt: 'asc' },
+          })
+        : Promise.resolve([]),
+      this.prisma.transaction.findMany({
+        where: {
+          transactedAt: { gte: prevStart, lte: prevEnd },
+          status: 'COMPLETED',
+        },
+        select: {
+          totalAmount: true,
+          items: { select: { quantity: true, unitCost: true } },
+        },
+      }),
+      this.prisma.wasteRecord
+        ? this.prisma.wasteRecord.findMany({
+            where: { recordedAt: { gte: prevStart, lte: prevEnd } },
+            select: { estimatedCost: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    let totalRevenue = 0;
+    let totalCostOfGoodsSold = 0;
+    const timelineMap = new Map<
+      string,
+      { revenue: number; costOfGoodsSold: number; wasteLoss: number; transactions: number }
+    >();
+
+    for (const tx of currentTxs) {
+      const rev = Number(tx.totalAmount);
+      const cogs = tx.items.reduce(
+        (sum, item) => sum + Number(item.quantity) * Number(item.unitCost),
+        0,
+      );
+      totalRevenue += rev;
+      totalCostOfGoodsSold += cogs;
+
+      const bucketKey = this.resolveBucketKey(tx.transactedAt, groupBy);
+      const bucket = timelineMap.get(bucketKey) ?? {
+        revenue: 0,
+        costOfGoodsSold: 0,
+        wasteLoss: 0,
+        transactions: 0,
+      };
+      bucket.revenue += rev;
+      bucket.costOfGoodsSold += cogs;
+      bucket.transactions += 1;
+      timelineMap.set(bucketKey, bucket);
+    }
+
+    let totalWasteLoss = 0;
+    for (const waste of currentWastes) {
+      const loss = Number(waste.estimatedCost);
+      totalWasteLoss += loss;
+      const bucketKey = this.resolveBucketKey(waste.recordedAt, groupBy);
+      const bucket = timelineMap.get(bucketKey) ?? {
+        revenue: 0,
+        costOfGoodsSold: 0,
+        wasteLoss: 0,
+        transactions: 0,
+      };
+      bucket.wasteLoss += loss;
+      timelineMap.set(bucketKey, bucket);
+    }
+
+    const grossProfitBeforeWaste = totalRevenue - totalCostOfGoodsSold;
+    const netGrossProfit = grossProfitBeforeWaste - totalWasteLoss;
+
+    let prevRevenue = 0;
+    let prevCogs = 0;
+    for (const tx of prevTxs) {
+      prevRevenue += Number(tx.totalAmount);
+      prevCogs += tx.items.reduce(
+        (sum, item) => sum + Number(item.quantity) * Number(item.unitCost),
+        0,
+      );
+    }
+    const prevWasteLoss = prevWastes.reduce((sum, w) => sum + Number(w.estimatedCost), 0);
+    const prevNetGrossProfit = prevRevenue - prevCogs - prevWasteLoss;
+
+    const timeline: GrossProfitTimelinePointDto[] = Array.from(timelineMap.entries())
+      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .map(([date, stats]) => {
+        const gpBefore = stats.revenue - stats.costOfGoodsSold;
+        const netGp = gpBefore - stats.wasteLoss;
+        return {
+          date,
+          revenue: formatMoney(stats.revenue),
+          costOfGoodsSold: formatMoney(stats.costOfGoodsSold),
+          grossProfitBeforeWaste: formatMoney(gpBefore),
+          wasteLoss: formatMoney(stats.wasteLoss),
+          netGrossProfit: formatMoney(netGp),
+          netMarginPercent: formatMarginPercent(netGp, stats.revenue),
+          transactions: stats.transactions,
+        };
+      });
+
+    const result: GrossProfitReportDto = {
+      startDate: window.startIso,
+      endDate: window.endIso,
+      groupBy,
+      totalRevenue: formatMoney(totalRevenue),
+      totalCostOfGoodsSold: formatMoney(totalCostOfGoodsSold),
+      grossProfitBeforeWaste: formatMoney(grossProfitBeforeWaste),
+      grossMarginBeforeWaste: formatMarginPercent(grossProfitBeforeWaste, totalRevenue),
+      totalWasteLoss: formatMoney(totalWasteLoss),
+      netGrossProfit: formatMoney(netGrossProfit),
+      netProfitMargin: formatMarginPercent(netGrossProfit, totalRevenue),
+      totalTransactions: currentTxs.length,
+      wasteRecordsCount: currentWastes.length,
+      comparison: {
+        previousStartDate: prevStart.toISOString(),
+        previousEndDate: prevEnd.toISOString(),
+        previousRevenue: formatMoney(prevRevenue),
+        previousCostOfGoodsSold: formatMoney(prevCogs),
+        previousWasteLoss: formatMoney(prevWasteLoss),
+        previousNetGrossProfit: formatMoney(prevNetGrossProfit),
+        revenueGrowthPercent: formatGrowthPercent(totalRevenue, prevRevenue),
+        netProfitGrowthPercent: formatGrowthPercent(netGrossProfit, prevNetGrossProfit),
+      },
+      timeline,
+    };
+
+    await this.writeJsonCache(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Laporan Performa per Kasir dan Riwayat Shift Operasional (M12-001 / FR-RPT-07).
+   */
+  async getCashierPerformance(
+    query: CashierPerformanceQuery,
+  ): Promise<CashierPerformanceReportDto> {
+    const window = this.resolveDateWindow(query.startDate, query.endDate);
+    const compositeVer = await this.getCompositeAdvancedVersion();
+    const cacheKey = `${REPORT_CACHE_NAMESPACE}:${compositeVer}:cashier-perf:${window.startIso}:${window.endIso}:${query.cashierId ?? 'all'}`;
+    const cached = await this.readJsonCache<CashierPerformanceReportDto>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const [transactions, shifts] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where: {
+          transactedAt: { gte: window.start, lte: window.end },
+          status: { in: ['COMPLETED', 'VOIDED'] },
+          ...(query.cashierId ? { cashierId: query.cashierId } : {}),
+        },
+        select: {
+          id: true,
+          cashierId: true,
+          status: true,
+          totalAmount: true,
+          paymentMethod: true,
+          cashier: { select: { id: true, fullName: true, username: true } },
+        },
+      }),
+      this.prisma.shift
+        ? this.prisma.shift.findMany({
+            where: {
+              openedAt: { gte: window.start, lte: window.end },
+              ...(query.cashierId ? { userId: query.cashierId } : {}),
+            },
+            include: {
+              user: { select: { id: true, fullName: true, username: true } },
+              transactions: {
+                where: { status: 'COMPLETED' },
+                select: { totalAmount: true },
+              },
+            },
+            orderBy: { openedAt: 'desc' },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const cashierMap = new Map<
+      string,
+      {
+        cashierId: string;
+        cashierName: string;
+        username: string;
+        completedTransactions: number;
+        voidedTransactions: number;
+        totalRevenue: number;
+        cashRevenue: number;
+        qrisRevenue: number;
+        bankTransferRevenue: number;
+        shiftsCount: number;
+        totalCashDifference: number;
+      }
+    >();
+
+    const ensureCashierEntry = (id: string, fullName: string, username: string) => {
+      let entry = cashierMap.get(id);
+      if (!entry) {
+        entry = {
+          cashierId: id,
+          cashierName: fullName,
+          username,
+          completedTransactions: 0,
+          voidedTransactions: 0,
+          totalRevenue: 0,
+          cashRevenue: 0,
+          qrisRevenue: 0,
+          bankTransferRevenue: 0,
+          shiftsCount: 0,
+          totalCashDifference: 0,
+        };
+        cashierMap.set(id, entry);
+      }
+      return entry;
+    };
+
+    let totalRevenue = 0;
+    let totalTransactions = 0;
+    let totalVoidedTransactions = 0;
+
+    for (const tx of transactions) {
+      const entry = ensureCashierEntry(
+        tx.cashierId,
+        tx.cashier.fullName,
+        tx.cashier.username ?? 'kasir',
+      );
+      if (tx.status === 'VOIDED') {
+        entry.voidedTransactions += 1;
+        totalVoidedTransactions += 1;
+        continue;
+      }
+      const amount = Number(tx.totalAmount);
+      entry.completedTransactions += 1;
+      entry.totalRevenue += amount;
+      totalTransactions += 1;
+      totalRevenue += amount;
+
+      if (tx.paymentMethod === 'CASH') {
+        entry.cashRevenue += amount;
+      } else if (tx.paymentMethod === 'QRIS') {
+        entry.qrisRevenue += amount;
+      } else if (tx.paymentMethod === 'BANK_TRANSFER') {
+        entry.bankTransferRevenue += amount;
+      }
+    }
+
+    let totalCashDifference = 0;
+    const shiftItems: ShiftPerformanceItemDto[] = [];
+
+    for (const shift of shifts) {
+      const entry = ensureCashierEntry(shift.userId, shift.user.fullName, shift.user.username);
+      entry.shiftsCount += 1;
+
+      const diff = shift.cashDifference !== null ? Number(shift.cashDifference) : 0;
+      entry.totalCashDifference += diff;
+      totalCashDifference += diff;
+
+      const liveTxCount = shift.transactions.length;
+      const liveSalesSum = shift.transactions.reduce((sum, t) => sum + Number(t.totalAmount), 0);
+      const effectiveSales = Number(shift.totalSales) > 0 ? Number(shift.totalSales) : liveSalesSum;
+      const effectiveTxCount = shift.totalTransactions > 0 ? shift.totalTransactions : liveTxCount;
+
+      shiftItems.push({
+        shiftId: shift.id,
+        shiftNo: shift.shiftNo,
+        cashierId: shift.userId,
+        cashierName: shift.user.fullName,
+        status: shift.status,
+        openedAt: shift.openedAt.toISOString(),
+        closedAt: shift.closedAt ? shift.closedAt.toISOString() : null,
+        openingCash: formatMoney(Number(shift.openingCash)),
+        expectedCash: shift.expectedCash !== null ? formatMoney(Number(shift.expectedCash)) : null,
+        closingCash: shift.closingCash !== null ? formatMoney(Number(shift.closingCash)) : null,
+        cashDifference:
+          shift.cashDifference !== null ? formatMoney(Number(shift.cashDifference)) : null,
+        totalSales: formatMoney(effectiveSales),
+        totalTransactions: effectiveTxCount,
+      });
+    }
+
+    const cashiers: CashierPerformanceItemDto[] = Array.from(cashierMap.values())
+      .sort(
+        (a, b) =>
+          b.totalRevenue - a.totalRevenue || b.completedTransactions - a.completedTransactions,
+      )
+      .map((entry) => ({
+        cashierId: entry.cashierId,
+        cashierName: entry.cashierName,
+        username: entry.username,
+        completedTransactions: entry.completedTransactions,
+        voidedTransactions: entry.voidedTransactions,
+        totalRevenue: formatMoney(entry.totalRevenue),
+        avgTransactionValue: formatMoney(
+          entry.completedTransactions > 0 ? entry.totalRevenue / entry.completedTransactions : 0,
+        ),
+        cashRevenue: formatMoney(entry.cashRevenue),
+        qrisRevenue: formatMoney(entry.qrisRevenue),
+        bankTransferRevenue: formatMoney(entry.bankTransferRevenue),
+        shiftsCount: entry.shiftsCount,
+        totalCashDifference: formatMoney(entry.totalCashDifference),
+      }));
+
+    const result: CashierPerformanceReportDto = {
+      startDate: window.startIso,
+      endDate: window.endIso,
+      totalRevenue: formatMoney(totalRevenue),
+      totalTransactions,
+      totalVoidedTransactions,
+      totalShifts: shiftItems.length,
+      totalCashDifference: formatMoney(totalCashDifference),
+      cashiers,
+      shifts: shiftItems,
+    };
+
+    await this.writeJsonCache(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Laporan Pembelian & Hutang Purchase Order per Supplier (M12-001).
+   */
+  async getSupplierPurchases(
+    query: SupplierPurchasesReportQuery,
+  ): Promise<SupplierPurchaseReportDto> {
+    const window = this.resolveDateWindow(query.startDate, query.endDate);
+    const compositeVer = await this.getCompositeAdvancedVersion();
+    const cacheKey = `${REPORT_CACHE_NAMESPACE}:${compositeVer}:supplier-purchases:${window.startIso}:${window.endIso}:${query.supplierId ?? 'all'}`;
+    const cached = await this.readJsonCache<SupplierPurchaseReportDto>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const orders = this.prisma.purchaseOrder
+      ? await this.prisma.purchaseOrder.findMany({
+          where: {
+            createdAt: { gte: window.start, lte: window.end },
+            status: { not: 'CANCELLED' },
+            ...(query.supplierId ? { supplierId: query.supplierId } : {}),
+          },
+          include: {
+            supplier: {
+              select: { id: true, name: true, contactPerson: true, phoneNumber: true },
+            },
+            items: {
+              select: { quantity: true },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      : [];
+
+    const supplierMap = new Map<
+      string,
+      {
+        supplierId: string;
+        supplierName: string;
+        contactPerson: string | null;
+        phone: string | null;
+        orderCount: number;
+        receivedOrderCount: number;
+        totalItemsPurchased: number;
+        totalPurchaseAmount: number;
+        totalPaidAmount: number;
+        outstandingDebt: number;
+        lastOrderDate: Date | null;
+      }
+    >();
+
+    let totalOrders = 0;
+    let receivedOrders = 0;
+    let totalPurchaseAmount = 0;
+    let totalPaidAmount = 0;
+    let totalOutstandingDebt = 0;
+
+    for (const po of orders) {
+      const entry = supplierMap.get(po.supplierId) ?? {
+        supplierId: po.supplierId,
+        supplierName: po.supplier.name,
+        contactPerson: po.supplier.contactPerson,
+        phone: po.supplier.phoneNumber,
+        orderCount: 0,
+        receivedOrderCount: 0,
+        totalItemsPurchased: 0,
+        totalPurchaseAmount: 0,
+        totalPaidAmount: 0,
+        outstandingDebt: 0,
+        lastOrderDate: null,
+      };
+
+      const poTotal = Number(po.totalAmount);
+      const poPaid = Number(po.paidAmount);
+      const poDebt = Math.max(0, poTotal - poPaid);
+      const itemQtySum = po.items.reduce((sum, item) => sum + Number(item.quantity), 0);
+
+      entry.orderCount += 1;
+      if (po.status === 'RECEIVED') {
+        entry.receivedOrderCount += 1;
+        receivedOrders += 1;
+      }
+      entry.totalItemsPurchased += itemQtySum;
+      entry.totalPurchaseAmount += poTotal;
+      entry.totalPaidAmount += poPaid;
+      entry.outstandingDebt += poDebt;
+      if (!entry.lastOrderDate || po.createdAt > entry.lastOrderDate) {
+        entry.lastOrderDate = po.createdAt;
+      }
+
+      supplierMap.set(po.supplierId, entry);
+
+      totalOrders += 1;
+      totalPurchaseAmount += poTotal;
+      totalPaidAmount += poPaid;
+      totalOutstandingDebt += poDebt;
+    }
+
+    const suppliers: SupplierPurchaseReportItemDto[] = Array.from(supplierMap.values())
+      .sort((a, b) => b.totalPurchaseAmount - a.totalPurchaseAmount)
+      .map((entry) => ({
+        supplierId: entry.supplierId,
+        supplierName: entry.supplierName,
+        contactPerson: entry.contactPerson,
+        phone: entry.phone,
+        orderCount: entry.orderCount,
+        receivedOrderCount: entry.receivedOrderCount,
+        totalItemsPurchased: formatStockDecimal(entry.totalItemsPurchased),
+        totalPurchaseAmount: formatMoney(entry.totalPurchaseAmount),
+        totalPaidAmount: formatMoney(entry.totalPaidAmount),
+        outstandingDebt: formatMoney(entry.outstandingDebt),
+        lastOrderDate: entry.lastOrderDate ? entry.lastOrderDate.toISOString() : null,
+      }));
+
+    const result: SupplierPurchaseReportDto = {
+      startDate: window.startIso,
+      endDate: window.endIso,
+      totalOrders,
+      receivedOrders,
+      totalPurchaseAmount: formatMoney(totalPurchaseAmount),
+      totalPaidAmount: formatMoney(totalPaidAmount),
+      totalOutstandingDebt: formatMoney(totalOutstandingDebt),
+      suppliers,
+    };
+
+    await this.writeJsonCache(cacheKey, result);
+    return result;
   }
 }

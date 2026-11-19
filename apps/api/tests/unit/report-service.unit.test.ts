@@ -383,4 +383,143 @@ describe('M07-001 Unit: ReportService, Export Formatters & ReportController', ()
     );
     expect(r4.send).toHaveBeenCalledWith(Buffer.from('ok'));
   });
+
+  it('M12-001: menghitung getGrossProfitReport (Penjualan - HPP - Penyusutan), getCashierPerformance, dan getSupplierPurchases', async () => {
+    const prisma = {
+      transaction: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              totalAmount: new Prisma.Decimal('200000.00'),
+              transactedAt: new Date('2026-11-18T03:00:00Z'),
+              items: [
+                {
+                  quantity: new Prisma.Decimal('4.000'),
+                  unitCost: new Prisma.Decimal('30000.00'),
+                },
+              ],
+            },
+          ])
+          .mockResolvedValueOnce([
+            {
+              totalAmount: new Prisma.Decimal('100000.00'),
+              items: [
+                {
+                  quantity: new Prisma.Decimal('2.000'),
+                  unitCost: new Prisma.Decimal('30000.00'),
+                },
+              ],
+            },
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: 'tx-c1',
+              cashierId: 'u-cashier-1',
+              status: 'COMPLETED',
+              totalAmount: new Prisma.Decimal('150000.00'),
+              paymentMethod: 'CASH',
+              cashier: { id: 'u-cashier-1', fullName: 'Siti Kasir', username: 'siti01' },
+            },
+            {
+              id: 'tx-c2',
+              cashierId: 'u-cashier-1',
+              status: 'VOIDED',
+              totalAmount: new Prisma.Decimal('25000.00'),
+              paymentMethod: 'QRIS',
+              cashier: { id: 'u-cashier-1', fullName: 'Siti Kasir', username: 'siti01' },
+            },
+          ]),
+      },
+      wasteRecord: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              estimatedCost: new Prisma.Decimal('15000.00'),
+              recordedAt: new Date('2026-11-18T05:00:00Z'),
+            },
+          ])
+          .mockResolvedValueOnce([{ estimatedCost: new Prisma.Decimal('5000.00') }]),
+      },
+      shift: {
+        findMany: jest.fn().mockResolvedValueOnce([
+          {
+            id: 'shift-1',
+            shiftNo: 'SHF-20261118-01',
+            userId: 'u-cashier-1',
+            status: 'CLOSED',
+            openedAt: new Date('2026-11-18T01:00:00Z'),
+            closedAt: new Date('2026-11-18T09:00:00Z'),
+            openingCash: new Prisma.Decimal('200000.00'),
+            expectedCash: new Prisma.Decimal('350000.00'),
+            closingCash: new Prisma.Decimal('348000.00'),
+            cashDifference: new Prisma.Decimal('-2000.00'),
+            totalSales: new Prisma.Decimal('150000.00'),
+            totalTransactions: 1,
+            user: { id: 'u-cashier-1', fullName: 'Siti Kasir', username: 'siti01' },
+            transactions: [{ totalAmount: new Prisma.Decimal('150000.00') }],
+          },
+        ]),
+      },
+      purchaseOrder: {
+        findMany: jest.fn().mockResolvedValueOnce([
+          {
+            id: 'po-1',
+            supplierId: 'sup-1',
+            status: 'RECEIVED',
+            totalAmount: new Prisma.Decimal('500000.00'),
+            paidAmount: new Prisma.Decimal('300000.00'),
+            createdAt: new Date('2026-11-18T02:00:00Z'),
+            supplier: {
+              id: 'sup-1',
+              name: 'CV Kebun Nusantara',
+              contactPerson: 'Pak Hadi',
+              phoneNumber: '08111222333',
+            },
+            items: [{ quantity: new Prisma.Decimal('20.000') }],
+          },
+        ]),
+      },
+    } as unknown as PrismaClient;
+
+    const service = new ReportService(prisma, new InMemoryCacheStore(), cacheConfig, TZ, STORE);
+
+    const gp = await service.getGrossProfitReport({
+      startDate: '2026-11-18',
+      endDate: '2026-11-18',
+      groupBy: 'day',
+    });
+    expect(gp.totalRevenue).toBe('200000.00');
+    expect(gp.totalCostOfGoodsSold).toBe('120000.00');
+    expect(gp.grossProfitBeforeWaste).toBe('80000.00');
+    expect(gp.totalWasteLoss).toBe('15000.00');
+    expect(gp.netGrossProfit).toBe('65000.00');
+    expect(gp.netProfitMargin).toBe('32.50');
+    expect(gp.comparison.previousNetGrossProfit).toBe('35000.00');
+    expect(gp.comparison.revenueGrowthPercent).toBe('100.00');
+
+    const cp = await service.getCashierPerformance({
+      startDate: '2026-11-18',
+      endDate: '2026-11-18',
+    });
+    expect(cp.totalRevenue).toBe('150000.00');
+    expect(cp.totalTransactions).toBe(1);
+    expect(cp.totalVoidedTransactions).toBe(1);
+    expect(cp.totalCashDifference).toBe('-2000.00');
+    expect(cp.cashiers[0]?.cashierName).toBe('Siti Kasir');
+    expect(cp.shifts).toHaveLength(1);
+
+    const sp = await service.getSupplierPurchases({
+      startDate: '2026-11-18',
+      endDate: '2026-11-18',
+    });
+    expect(sp.totalOrders).toBe(1);
+    expect(sp.receivedOrders).toBe(1);
+    expect(sp.totalPurchaseAmount).toBe('500000.00');
+    expect(sp.totalPaidAmount).toBe('300000.00');
+    expect(sp.totalOutstandingDebt).toBe('200000.00');
+    expect(sp.suppliers[0]?.supplierName).toBe('CV Kebun Nusantara');
+    expect(sp.suppliers[0]?.totalItemsPurchased).toBe('20');
+  });
 });
