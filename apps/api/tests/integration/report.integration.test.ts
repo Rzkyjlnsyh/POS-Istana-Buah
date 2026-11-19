@@ -1,6 +1,7 @@
 import { ERROR_CODES } from '@istana-buah/shared';
 import type { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import ExcelJS from 'exceljs';
 import type { Express } from 'express';
 import type Redis from 'ioredis';
 import request from 'supertest';
@@ -232,32 +233,44 @@ describe('M07-001 Integration: Report & Export API (/v1/reports)', () => {
     expect(summaryAfterTx.body.data.totalRevenue).toBe('175000.00');
     expect(summaryAfterTx.body.data.totalTransactions).toBe(3);
 
-    // 7. Ekspor CSV, Excel XML (.xls), dan PDF (%PDF-1.4)
+    const parseBinary = (
+      res: request.Response,
+      callback: (err: Error | null, body: Buffer) => void,
+    ) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    };
+
+    // 7. Ekspor CSV, Excel OOXML (.xlsx via ExcelJS), dan PDF (PDFKit)
     const csvRes = await request(app).get('/v1/reports/export/sales?format=csv').set(auth('OWNER'));
     expect(csvRes.status).toBe(200);
     expect(csvRes.headers['content-type']).toContain('text/csv');
     expect(csvRes.text).toContain('175000.00');
 
-    const xlsRes = await request(app)
+    const xlsxRes = await request(app)
       .get('/v1/reports/export/sales?format=excel')
-      .set(auth('OWNER'));
-    expect(xlsRes.status).toBe(200);
-    expect(xlsRes.headers['content-type']).toContain('application/vnd.ms-excel');
-    expect(xlsRes.text).toContain('Detail Transaksi');
+      .set(auth('OWNER'))
+      .buffer(true)
+      .parse(parseBinary);
+    expect(xlsxRes.status).toBe(200);
+    expect(xlsxRes.headers['content-type']).toContain(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(xlsxRes.headers['content-disposition']).toContain('.xlsx');
+    const salesWb = new ExcelJS.Workbook();
+    await salesWb.xlsx.load(xlsxRes.body as unknown as ArrayBuffer);
+    expect(salesWb.worksheets.map((ws) => ws.name)).toEqual(['Ringkasan', 'Detail Transaksi']);
 
     const pdfRes = await request(app)
       .get('/v1/reports/export/sales?format=pdf')
       .set(auth('OWNER'))
       .buffer(true)
-      .parse((res, callback) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () => callback(null, Buffer.concat(chunks)));
-      });
+      .parse(parseBinary);
     expect(pdfRes.status).toBe(200);
     expect(pdfRes.headers['content-type']).toBe('application/pdf');
-    expect((pdfRes.body as Buffer).toString('utf8').startsWith('%PDF-1.4')).toBe(true);
-    expect((pdfRes.body as Buffer).toString('utf8').trim().endsWith('%%EOF')).toBe(true);
+    expect((pdfRes.body as Buffer).toString('latin1').startsWith('%PDF-')).toBe(true);
+    expect((pdfRes.body as Buffer).toString('latin1').trim().endsWith('%%EOF')).toBe(true);
 
     // 8. M12-001 Advanced Reports: Gross Profit (Penjualan - HPP - Penyusutan), Cashier Performance & Supplier Purchases
     const wasteRes = await request(app).post('/v1/waste-records').set(auth('MANAGER')).send({
@@ -312,8 +325,61 @@ describe('M07-001 Integration: Report & Export API (/v1/reports)', () => {
     expect(supplierPurchasesRes.body.data.totalOutstandingDebt).toBe('150000.00');
     expect(supplierPurchasesRes.body.data.suppliers[0].supplierName).toBe('PT Agro Buah Segar');
 
-    // RBAC: CASHIER ditolak (403) pada endpoint laporan lanjutan
+    // RBAC: CASHIER ditolak (403) pada endpoint laporan lanjutan & ekspor lanjutan
     const forbiddenGp = await request(app).get('/v1/reports/gross-profit').set(auth('CASHIER'));
     expect(forbiddenGp.status).toBe(403);
+    const forbiddenExportGp = await request(app)
+      .get('/v1/reports/export/gross-profit?format=pdf')
+      .set(auth('CASHIER'));
+    expect(forbiddenExportGp.status).toBe(403);
+
+    // 9. M12-002 Export PDF (PDFKit) & Excel (.xlsx via ExcelJS) untuk seluruh laporan lanjutan
+    const gpPdfRes = await request(app)
+      .get('/v1/reports/export/gross-profit?format=pdf')
+      .set(auth('OWNER'))
+      .buffer(true)
+      .parse(parseBinary);
+    expect(gpPdfRes.status).toBe(200);
+    expect(gpPdfRes.headers['content-type']).toBe('application/pdf');
+    expect((gpPdfRes.body as Buffer).toString('latin1').startsWith('%PDF-')).toBe(true);
+
+    const cpXlsxRes = await request(app)
+      .get('/v1/reports/export/cashier-performance?format=excel')
+      .set(auth('MANAGER'))
+      .buffer(true)
+      .parse(parseBinary);
+    expect(cpXlsxRes.status).toBe(200);
+    expect(cpXlsxRes.headers['content-disposition']).toContain('.xlsx');
+    const cpWb = new ExcelJS.Workbook();
+    await cpWb.xlsx.load(cpXlsxRes.body as unknown as ArrayBuffer);
+    expect(cpWb.worksheets.map((w) => w.name)).toEqual([
+      'Ringkasan',
+      'Performa Kasir',
+      'Riwayat Shift',
+    ]);
+
+    const supplierPdfRes = await request(app)
+      .get('/v1/reports/export/supplier-purchases?format=pdf')
+      .set(auth('OWNER'))
+      .buffer(true)
+      .parse(parseBinary);
+    expect(supplierPdfRes.status).toBe(200);
+    expect((supplierPdfRes.body as Buffer).toString('latin1').startsWith('%PDF-')).toBe(true);
+
+    const stockXlsxRes = await request(app)
+      .get('/v1/reports/export/stock-current?format=excel')
+      .set(auth('MANAGER'))
+      .buffer(true)
+      .parse(parseBinary);
+    expect(stockXlsxRes.status).toBe(200);
+    expect((stockXlsxRes.body as Buffer).subarray(0, 2).toString('utf8')).toBe('PK');
+
+    const wastePdfRes = await request(app)
+      .get('/v1/reports/export/waste-summary?format=pdf')
+      .set(auth('OWNER'))
+      .buffer(true)
+      .parse(parseBinary);
+    expect(wastePdfRes.status).toBe(200);
+    expect((wastePdfRes.body as Buffer).toString('latin1').startsWith('%PDF-')).toBe(true);
   });
 });

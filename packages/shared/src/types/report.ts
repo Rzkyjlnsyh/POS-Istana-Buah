@@ -3,6 +3,13 @@ import type { PaymentMethod, ProductType, ShiftStatus } from '../constants/enums
 export type ReportGroupBy = 'day' | 'week' | 'month';
 export type ProductPerformanceSortBy = 'revenue' | 'qty';
 export type SalesExportFormat = 'csv' | 'excel' | 'pdf';
+export type ReportExportType =
+  | 'sales'
+  | 'gross-profit'
+  | 'cashier-performance'
+  | 'supplier-purchases'
+  | 'stock-current'
+  | 'waste-summary';
 
 export interface SalesTimelinePointDto {
   date: string;
