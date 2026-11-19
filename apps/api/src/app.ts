@@ -22,6 +22,8 @@ import { createCategoryRouter } from './modules/categories/category.routes';
 import { CategoryService } from './modules/categories/category.service';
 import { createDashboardRouter } from './modules/dashboard/dashboard.routes';
 import { DashboardService } from './modules/dashboard/dashboard.service';
+import { createEmployeeRouter } from './modules/employees/employee.routes';
+import { EmployeeService } from './modules/employees/employee.service';
 import { createProductRouter } from './modules/products/product.routes';
 import { ProductService } from './modules/products/product.service';
 import { createReportRouter } from './modules/reports/report.routes';
@@ -74,6 +76,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
     config.appName,
   );
   const shiftService = new ShiftService(db, config.timezone, cacheStore);
+  const employeeService = new EmployeeService(db, effectiveAuthCfg, shiftService);
   const stockService = new StockService(db, cacheStore, effectiveCacheCfg, config.timezone);
   const dashboardService = new DashboardService(
     db,
@@ -133,6 +136,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
     createPurchaseOrderRouter({ purchaseOrderService, authenticate }),
   );
   v1Router.use('/transactions', createTransactionRouter({ transactionService, authenticate }));
+  v1Router.use('/users', createEmployeeRouter({ employeeService, authenticate }));
   v1Router.use('/waste-records', createWasteRouter({ wasteService, authenticate }));
 
   app.use('/v1', v1Router);
