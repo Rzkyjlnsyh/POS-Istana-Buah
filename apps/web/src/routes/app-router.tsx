@@ -8,6 +8,7 @@ import { ChangePasswordPage } from '../features/auth/pages/change-password-page'
 import { LoginPage } from '../features/auth/pages/login-page';
 import { CategoryPage } from '../features/categories/pages/category-page';
 import { DashboardPage } from '../features/dashboard/pages/dashboard-page';
+import { EmployeePage } from '../features/employees/pages/employee-page';
 import { PosPage } from '../features/pos/pages/pos-page';
 import { TransactionHistoryPage } from '../features/pos/pages/transaction-history-page';
 import { ProductPage } from '../features/products/pages/product-page';
@@ -162,10 +163,7 @@ export function AppRoutes() {
             path="/employees"
             element={
               <RequireRole allowedRoles={['OWNER']}>
-                <ModuleWorkspaceSection
-                  title="Manajemen Pegawai"
-                  description="Kelola akun kasir dan manajer toko, hak akses peran, serta status keaktifan pegawai."
-                />
+                <EmployeePage />
               </RequireRole>
             }
           />
